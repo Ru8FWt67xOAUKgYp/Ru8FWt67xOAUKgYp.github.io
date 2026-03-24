@@ -167,7 +167,7 @@
             try {
                 const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=45.5017&longitude=-73.5673&current_weather=true");
                 const data = await res.json();
-                document.getElementById('temp').innerText = Math.round(data.current_weather.apparent_temperature) + "°C";
+                document.getElementById('temp').innerText = Math.round(data.apparent_temperature) + "°C";
             } catch (e) { console.error("Weather error"); }
         }
 
