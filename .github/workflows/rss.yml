@@ -1,0 +1,30 @@
+name: Refresh RSS Feed
+on:
+  schedule:
+    - cron: '0 * * * *' # Every hour
+  workflow_dispatch: # Allows manual "Run" button in GitHub Actions tab
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Important: allows the action to save the file back to your repo
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Run Scraper
+        run: python update_feeds.py
+
+      - name: Commit Changes
+        run: |
+          git config --global user.name 'RSS Bot'
+          git config --global user.email 'bot@github.com'
+          git add feeds.json
+          git commit -m "Automated RSS Update" || exit 0
+          git push
