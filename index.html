@@ -163,13 +163,22 @@
         }
 
         // 2. Weather & RSS Fetching
-        async function fetchWeather() {
-            try {
-                const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=45.5017&longitude=-73.5673&current_weather=true");
-                const data = await res.json();
-                document.getElementById('temp').innerText = Math.round(data.current.apparent_temperature) + "°C";
-            } catch (e) { console.error("Weather error"); }
-        }
+async function fetchWeather() {
+    try {
+        // We add &current=apparent_temperature to the API call
+        const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=45.5017&longitude=-73.5673&current=apparent_temperature");
+        const data = await res.json();
+        
+        // Accessing the 'apparent_temperature' from the 'current' object
+        const feelsLike = Math.round(data.current.apparent_temperature);
+        
+        document.getElementById('temp').innerText = `${feelsLike}°C`;
+        document.getElementById('w-desc').innerText = "Feels Like";
+    } catch (e) { 
+        console.error("Weather error:", e); 
+        document.getElementById('w-desc').innerText = "Offline";
+    }
+}
 
         async function fetchRSS() {
             try {
