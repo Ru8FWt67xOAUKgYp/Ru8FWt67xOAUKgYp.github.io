@@ -1,0 +1,125 @@
+ 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Personal Hub</title>
+    <style>
+        :root {
+            --bg: #f4f4f9; --card: #ffffff; --text: #1a1a1a; --accent: #6200ee; --dim: #757575; --shadow: rgba(0,0,0,0.1);
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #121212; --card: #1e1e1e; --text: #e0e0e0; --accent: #bb86fc; --dim: #999; --shadow: rgba(0,0,0,0.5);
+            }
+        }
+        body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 15px; display: flex; flex-direction: column; align-items: center; }
+        
+        .weather-row { width: 100%; max-width: 400px; background: var(--card); padding: 20px; border-radius: 15px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 12px var(--shadow); box-sizing: border-box; }
+        .temp { font-size: 2.5rem; font-weight: bold; }
+        
+        #search { width: 100%; max-width: 400px; padding: 14px 20px; margin-bottom: 25px; border-radius: 25px; border: 1px solid var(--dim); background: var(--card); color: var(--text); box-sizing: border-box; outline: none; }
+
+        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; width: 100%; max-width: 400px; margin-bottom: 30px; }
+        .app-link { display: flex; flex-direction: column; align-items: center; text-decoration: none; color: inherit; background: var(--card); padding: 15px 5px; border-radius: 12px; box-shadow: 0 2px 5px var(--shadow); }
+        .app-link:active { transform: scale(0.92); }
+        .icon { font-size: 1.8rem; margin-bottom: 5px; }
+        .label { font-size: 0.75rem; font-weight: 500; }
+
+        .rss-container { width: 100%; max-width: 400px; min-height: 100px; }
+        .rss-item { background: var(--card); padding: 15px; border-radius: 10px; margin-bottom: 12px; border-left: 4px solid var(--accent); box-shadow: 0 2px 5px var(--shadow); }
+        .rss-item a { color: var(--text); text-decoration: none; font-weight: bold; display: block; line-height: 1.4; }
+        .rss-meta { font-size: 0.75rem; color: var(--dim); margin-top: 6px; }
+        
+        button { width: 100%; padding: 12px; background: var(--card); color: var(--accent); border: 1px solid var(--accent); border-radius: 8px; font-weight: bold; margin-bottom: 40px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <div class="weather-row">
+        <div><div id="temp" class="temp">--°C</div><div style="font-size: 0.8rem; opacity: 0.7;">Montreal, QC</div></div>
+        <div style="text-align: right;"><div id="w-icon" style="font-size: 2rem;">☁️</div><div id="w-desc" style="font-size: 0.8rem; color: var(--accent);">Updating...</div></div>
+    </div>
+
+    <input type="text" id="search" placeholder="Search..." onkeydown="if(event.key==='Enter') window.location='https://duckduckgo.com/?q='+this.value">
+
+    <div class="grid">
+        <a href="https://m.youtube.com" class="app-link"><span class="icon">📺</span><span class="label">YouTube</span></a>
+        <a href="https://reddit.com" class="app-link"><span class="icon">🤖</span><span class="label">Reddit</span></a>
+        <a href="https://instagram.com" class="app-link"><span class="icon">📸</span><span class="label">Insta</span></a>
+        <a href="https://amazon.ca" class="app-link"><span class="icon">🛒</span><span class="label">Amazon</span></a>
+        <a href="https://maps.google.com" class="app-link"><span class="icon">📍</span><span class="label">Maps</span></a>
+        <a href="http://raspberrypi.local" class="app-link" style="border: 1px solid var(--accent);"><span class="icon">🏠</span><span class="label">Pi Hub</span></a>
+    </div>
+
+    <div class="rss-container">
+        <div id="feed-status" style="text-align:center; font-size:0.9rem; padding:20px; color:var(--dim);">Loading feeds...</div>
+        <div id="feed-list"></div>
+        <button id="load-more" style="display:none">Load More</button>
+    </div>
+
+    <script>
+        // --- WEATHER ---
+        async function fetchWeather() {
+            try {
+                const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=45.5017&longitude=-73.5673&current_weather=true");
+                const data = await res.json();
+                document.getElementById('temp').innerText = Math.round(data.current_weather.temperature) + "°C";
+                document.getElementById('w-desc').innerText = "Clear";
+            } catch (e) { document.getElementById('w-desc').innerText = "Offline"; }
+        }
+
+        // --- RSS ---
+        let items = [];
+        let count = 3;
+
+        async function fetchRSS() {
+            const status = document.getElementById('feed-status');
+            // Try-Catch block to handle network/proxy errors
+            try {
+                const rssUrl = "https://news.google.com/rss?hl=en-CA&gl=CA&ceid=CA:en";
+                const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(rssUrl)}`);
+                if (!res.ok) throw new Error("Network error");
+                
+                const data = await res.json();
+                const parser = new DOMParser();
+                const xml = parser.parseFromString(data.contents, "text/xml");
+                
+                items = Array.from(xml.querySelectorAll("item")).map(el => ({
+                    title: el.querySelector("title").textContent,
+                    link: el.querySelector("link").textContent,
+                    date: el.querySelector("pubDate").textContent.split(' ').slice(0, 4).join(' ')
+                }));
+
+                if (items.length > 0) {
+                    status.style.display = 'none';
+                    render();
+                } else {
+                    status.innerText = "No feeds found.";
+                }
+            } catch (e) {
+                status.innerText = "Failed to load RSS. Check connection.";
+                console.error(e);
+            }
+        }
+
+        function render() {
+            const list = document.getElementById('feed-list');
+            const btn = document.getElementById('load-more');
+            list.innerHTML = items.slice(0, count).map(i => `
+                <div class="rss-item">
+                    <a href="${i.link}" target="_blank">${i.title}</a>
+                    <div class="rss-meta">${i.date}</div>
+                </div>
+            `).join('');
+            btn.style.display = count < items.length ? 'block' : 'none';
+        }
+
+        document.getElementById('load-more').onclick = () => { count += 3; render(); };
+
+        fetchWeather();
+        fetchRSS();
+    </script>
+</body>
+</html>
