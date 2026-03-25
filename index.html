@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="apple-touch-icon" href="icon.png">
     <title>My Hub</title>
     <style>
         :root {
@@ -26,20 +25,19 @@
             display: flex; flex-direction: column; align-items: center;
         }
 
-        /* Weather */
-        <div class="weather-row" style="justify-content: flex-end; align-items: flex-start; min-height: 100px;">
-            <div style="text-align: right;">
-                <div id="w-icon" style="font-size: 2.2rem; line-height: 1; margin-bottom: 4px;">🌤️</div>
-                <div id="temp" style="font-size: 1.8rem; font-weight: bold; line-height: 1;">--°C</div>
-                <div id="w-desc" style="font-size: 0.7rem; color: var(--accent); font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px;">Feels Like</div>
-            </div>
-        </div>
-
-        /* Enhanced Search Containers */
-        .search-container {
-            position: relative;
+        /* Weather Section - Clean & Right-Aligned */
+        .weather-row {
             width: 100%; max-width: 400px;
-            margin-bottom: 15px;
+            background: var(--card); padding: 20px;
+            border-radius: 15px; display: flex;
+            justify-content: flex-end; align-items: flex-start;
+            margin-bottom: 20px; box-shadow: 0 4px 12px var(--shadow);
+            box-sizing: border-box; min-height: 110px;
+        }
+
+        /* Search Containers */
+        .search-container {
+            position: relative; width: 100%; max-width: 400px; margin-bottom: 15px;
         }
         .search-input {
             width: 100%; padding: 12px 40px 12px 20px;
@@ -49,10 +47,8 @@
         }
         .clear-btn {
             position: absolute; right: 15px; top: 50%;
-            transform: translateY(-50%);
-            color: var(--dim); cursor: pointer;
-            font-size: 1.2rem; display: none;
-            user-select: none;
+            transform: translateY(-50%); color: var(--dim);
+            cursor: pointer; font-size: 1.2rem; display: none;
         }
 
         /* App Grid */
@@ -96,8 +92,11 @@
 <body>
 
     <div class="weather-row">
-        <div><div id="temp" class="temp">--°C</div><div style="font-size: 0.8rem; opacity: 0.7;">Montreal, QC</div></div>
-        <div style="text-align: right;"><div style="font-size: 2rem;">🌤️</div><div id="w-desc" style="font-size: 0.8rem; color: var(--accent);">Montreal</div></div>
+        <div style="text-align: right;">
+            <div id="w-icon" style="font-size: 2.2rem; line-height: 1;">🌤️</div>
+            <div id="temp" style="font-size: 1.8rem; font-weight: bold; margin-top: 5px;">--°C</div>
+            <div id="w-desc" style="font-size: 0.7rem; color: var(--accent); font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px;">Feels Like</div>
+        </div>
     </div>
 
     <div class="search-container">
@@ -138,7 +137,7 @@
         let filteredItems = [];
         let visibleCount = 5;
 
-        // 1. Search Utilities
+        // Search & Clear Logic
         function toggleClear(inputId, clearId) {
             const input = document.getElementById(inputId);
             const clearBtn = document.getElementById(clearId);
@@ -160,23 +159,20 @@
             }
         }
 
-        // 2. Weather & RSS Fetching
-async function fetchWeather() {
-    try {
-        const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=45.5017&longitude=-73.5673&current=apparent_temperature");
-        const data = await res.json();
-        
-        // Fetch and round the Feels Like temperature
-        const feelsLike = Math.round(data.current.apparent_temperature);
-        
-        document.getElementById('temp').innerText = `${feelsLike}°C`;
-        document.getElementById('w-desc').innerText = "Feels Like";
-    } catch (e) { 
-        console.error("Weather error:", e); 
-        document.getElementById('temp').innerText = "--°C";
-        document.getElementById('w-desc').innerText = "Offline";
-    }
-}
+        // Weather Fetch (Apparent Temperature)
+        async function fetchWeather() {
+            try {
+                const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=45.5017&longitude=-73.5673&current=apparent_temperature");
+                const data = await res.json();
+                const feelsLike = Math.round(data.current.apparent_temperature);
+                document.getElementById('temp').innerText = `${feelsLike}°C`;
+            } catch (e) { 
+                document.getElementById('temp').innerText = "--°C";
+                document.getElementById('w-desc').innerText = "Offline";
+            }
+        }
+
+        // RSS Logic
         async function fetchRSS() {
             try {
                 const res = await fetch("./feeds.json");
@@ -210,6 +206,7 @@ async function fetchWeather() {
 
         document.getElementById('load-more').onclick = () => { visibleCount += 5; render(); };
 
+        // Init
         fetchWeather();
         fetchRSS();
     </script>
