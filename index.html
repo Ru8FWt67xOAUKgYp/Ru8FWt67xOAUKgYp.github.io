@@ -25,7 +25,6 @@
             display: flex; flex-direction: column; align-items: center;
         }
 
-        /* Weather Section - Clean & Right-Aligned */
         .weather-row {
             width: 100%; max-width: 400px;
             background: var(--card); padding: 20px;
@@ -35,7 +34,6 @@
             box-sizing: border-box; min-height: 110px;
         }
 
-        /* Search Containers */
         .search-container {
             position: relative; width: 100%; max-width: 400px; margin-bottom: 15px;
         }
@@ -51,7 +49,6 @@
             cursor: pointer; font-size: 1.2rem; display: none;
         }
 
-        /* App Grid */
         .grid {
             display: grid; grid-template-columns: repeat(3, 1fr);
             gap: 15px; width: 100%; max-width: 400px; margin-bottom: 30px;
@@ -66,7 +63,6 @@
         .icon { font-size: 1.8rem; margin-bottom: 5px; }
         .label { font-size: 0.7rem; font-weight: 500; }
 
-        /* RSS Section */
         .rss-container { width: 100%; max-width: 400px; }
         .rss-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
         .rss-title { font-size: 1.1rem; font-weight: bold; color: var(--accent); }
@@ -93,9 +89,9 @@
 
     <div class="weather-row">
         <div style="text-align: right;">
-            <div id="w-icon" style="font-size: 2.2rem; line-height: 1;">🌤️</div>
+            <div id="w-icon" style="font-size: 2.2rem; line-height: 1;">--</div>
             <div id="temp" style="font-size: 1.8rem; font-weight: bold; margin-top: 5px;">--°C</div>
-            <div id="w-desc" style="font-size: 0.7rem; color: var(--accent); font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px;">Feels Like</div>
+            <div id="w-desc" style="font-size: 0.7rem; color: var(--accent); font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px;">Loading...</div>
         </div>
     </div>
 
@@ -137,7 +133,20 @@
         let filteredItems = [];
         let visibleCount = 5;
 
-        // Search & Clear Logic
+        // Weather Mapping
+        const weatherMap = {
+            0:  { label: "Clear Sky", day: "☀️", night: "🌙" },
+            1:  { label: "Mainly Clear", day: "🌤️", night: "🌙" },
+            2:  { label: "Partly Cloudy", day: "⛅", night: "☁️" },
+            3:  { label: "Overcast", day: "☁️", night: "☁️" },
+            45: { label: "Foggy", day: "🌫️", night: "🌫️" },
+            48: { label: "Rime Fog", day: "🌫️", night: "🌫️" },
+            51: { label: "Drizzle", day: "🌦️", night: "🌧️" },
+            61: { label: "Rain", day: "🌧️", night: "🌧️" },
+            71: { label: "Snow", day: "❄️", night: "❄️" },
+            95: { label: "Thunderstorm", day: "⛈️", night: "⛈️" }
+        };
+
         function toggleClear(inputId, clearId) {
             const input = document.getElementById(inputId);
             const clearBtn = document.getElementById(clearId);
@@ -159,20 +168,28 @@
             }
         }
 
-        // Weather Fetch (Apparent Temperature)
         async function fetchWeather() {
             try {
-                const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=45.5017&longitude=-73.5673&current=apparent_temperature");
+                // Now fetching apparent_temperature, weather_code, and is_day
+                const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=45.5017&longitude=-73.5673&current=apparent_temperature,weather_code,is_day");
                 const data = await res.json();
+                
                 const feelsLike = Math.round(data.current.apparent_temperature);
+                const code = data.current.weather_code;
+                const isDay = data.current.is_day; // 1 for day, 0 for night
+
+                const weatherInfo = weatherMap[code] || { label: "Weather", day: "🌡️", night: "🌡️" };
+
                 document.getElementById('temp').innerText = `${feelsLike}°C`;
+                document.getElementById('w-icon').innerText = isDay ? weatherInfo.day : weatherInfo.night;
+                document.getElementById('w-desc').innerText = weatherInfo.label;
+
             } catch (e) { 
                 document.getElementById('temp').innerText = "--°C";
                 document.getElementById('w-desc').innerText = "Offline";
             }
         }
 
-        // RSS Logic
         async function fetchRSS() {
             try {
                 const res = await fetch("./feeds.json");
@@ -206,7 +223,6 @@
 
         document.getElementById('load-more').onclick = () => { visibleCount += 5; render(); };
 
-        // Init
         fetchWeather();
         fetchRSS();
     </script>
