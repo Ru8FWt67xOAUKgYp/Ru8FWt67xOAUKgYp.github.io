@@ -87,13 +87,18 @@
 </head>
 <body>
 
-    <div class="weather-row">
-        <div style="text-align: right;">
-            <div id="w-icon" style="font-size: 2.2rem; line-height: 1;">--</div>
-            <div id="temp" style="font-size: 1.8rem; font-weight: bold; margin-top: 5px;">--°C</div>
-            <div id="w-desc" style="font-size: 0.7rem; color: var(--accent); font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px;">Loading...</div>
-        </div>
+ <div class="weather-row" style="display: flex; justify-content: space-between; align-items: center; min-height: 124px; padding: 10px 20px;">
+    
+    <div style="width: 165px; height: 124px; overflow: hidden; border-radius: 8px;">
+        <img src="hub.png" alt="Hub" style="width: 100%; height: 100%; object-fit: cover;">
     </div>
+
+    <div style="text-align: right;">
+        <div id="w-icon" style="font-size: 2.2rem; line-height: 1;">--</div>
+        <div id="temp" style="font-size: 1.8rem; font-weight: bold; margin-top: 5px;">--°C</div>
+        <div id="w-desc" style="font-size: 0.7rem; color: var(--accent); font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px;">Loading...</div>
+    </div>
+</div>
 
     <div class="search-container">
         <input type="text" id="web-search" class="search-input" inputmode="search" placeholder="Search the web..." 
