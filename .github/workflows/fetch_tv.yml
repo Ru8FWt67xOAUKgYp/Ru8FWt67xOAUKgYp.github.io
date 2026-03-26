@@ -1,4 +1,4 @@
-name: Update TV Listings (Playwright)
+name: Update TV Listings (Stable)
 
 on:
   schedule:
@@ -14,70 +14,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
-      - name: Install Playwright
-        run: |
-          npm install playwright
-          npx playwright install chromium --with-deps
-
       - name: Fetch Data
         run: |
-          node <<EOF
-          const { chromium } = require('playwright');
-          const fs = require('fs');
-
-          (async () => {
-            const browser = await chromium.launch({ headless: true });
-            
-            // Set up a context that looks exactly like a standard Windows Chrome browser
-            const context = await browser.newContext({
-              userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-              viewport: { width: 1280, height: 720 },
-              locale: 'fr-CA',
-              timezoneId: 'America/Montreal'
-            });
-
-            const page = await context.newPage();
-
-            try {
-              console.log("Requesting data via Browser Context...");
-              
-              // We go to the main site first to get a session cookie
-              await page.goto('https://www.tvtv.ca', { waitUntil: 'networkidle' });
-              await page.waitForTimeout(3000);
-
-              // Now we perform the API fetch from INSIDE the browser session
-              const response = await page.evaluate(async () => {
-                const res = await fetch('https://www.tvtv.ca/api/grid?lineupId=CAN-0004264-X');
-                return await res.json();
-              });
-
-              if (!response || response.length === 0) throw new Error("API returned empty data");
-
-              const now = new Date().toLocaleString("en-CA", {timeZone: "America/Montreal", hour12: false});
-              const output = { lastUpdated: now, channels: response };
-
-              fs.writeFileSync('tele.json', JSON.stringify(output, null, 2));
-              console.log("Success: tele.json updated.");
-              
-            } catch (error) {
-              console.error("Fetch failed:", error.message);
-              // Take a screenshot for debugging if it's still stuck
-              await page.screenshot({ path: 'debug-screenshot.png' });
-              process.exit(1);
-            } finally {
-              await browser.close();
-            }
-          })();
-          EOF
+          # Using a common JSON mirror for Canadian TV Grid (Montreal)
+          # This avoids the Cloudflare wall on the main tvtv site
+          URL="https://api.allorigins.win/get?url=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("https://www.tvtv.ca/api/grid?lineupId=CAN-0004264-X"))')"
+          
+          RESPONSE=$(curl -s "$URL")
+          
+          # Clean and Extract
+          RAW_DATA=$(echo "$RESPONSE" | python3 -c "import sys, json; print(json.loads(sys.stdin.read())['contents'])")
+          
+          if [[ $RAW_DATA == \[* ]]; then
+            MTL_TIME=$(TZ="America/Montreal" date +"%Y-%m-%d %H:%M")
+            echo "{ \"lastUpdated\": \"$MTL_TIME\", \"channels\": $RAW_DATA }" > tele.json
+            echo "Success: Data stored."
+          else
+            echo "Error: Data format invalid."
+            exit 1
+          fi
 
       - name: Commit and Push
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add tele.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update TV listings Playwright" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update TV Grid" && git push)
