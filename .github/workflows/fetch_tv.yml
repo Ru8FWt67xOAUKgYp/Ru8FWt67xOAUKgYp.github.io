@@ -1,4 +1,4 @@
-name: Update TV Listings
+name: Update TV Listings (Playwright)
 
 on:
   schedule:
@@ -6,60 +6,57 @@ on:
   workflow_dispatch:
 
 jobs:
-  fetch-and-commit:
+  fetch:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Fetch via Proxy
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright
         run: |
-          # Use a proxy that specializes in bypassing CORS/Cloudflare
-          TARGET="https://www.tvtv.ca/api/grid?lineupId=CAN-0004264-X"
-          PROXY="https://api.allorigins.win/get?url="
-          
-          # We use python to safely encode the URL and process the response
-          python3 <<EOF
-          import urllib.request
-          import urllib.parse
-          import json
-          import os
-          from datetime import datetime
-          import pytz
+          npm install playwright
+          npx playwright install chromium --with-deps
 
-          try:
-              # Encode the target URL and fetch via proxy
-              encoded_url = urllib.parse.quote("$TARGET", safe='')
-              proxy_url = "$PROXY" + encoded_url
-              
-              print(f"Fetching: {proxy_url}")
-              
-              with urllib.request.urlopen(proxy_url) as response:
-                  data = json.loads(response.read().decode())
-                  # AllOrigins wraps the result in a 'contents' field as a string
-                  raw_channels = json.loads(data['contents'])
-                  
-                  # Set up the timestamp for Montreal
-                  mtl_tz = pytz.timezone('America/Montreal')
-                  now = datetime.now(mtl_tz).strftime('%Y-%m-%d %H:%M')
-                  
-                  # Create the final structure
-                  final_output = {
-                      "lastUpdated": now,
-                      "channels": raw_channels
-                  }
-                  
-                  # Save to tele.json
-                  with open('tele.json', 'w', encoding='utf-8') as f:
-                      json.dump(final_output, f, ensure_ascii=False, indent=2)
-                  
-                  print("Success: tele.json created successfully.")
+      - name: Fetch Data with Headless Browser
+        run: |
+          node <<EOF
+          const { chromium } = require('playwright');
+          const fs = require('fs');
 
-          except Exception as e:
-              print(f"Error: {e}")
-              exit(1)
+          (async () => {
+            const browser = await chromium.launch();
+            const page = await browser.newPage();
+            
+            // Set a realistic User Agent
+            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+
+            try {
+              console.log("Navigating to API...");
+              await page.goto('https://www.tvtv.ca/api/grid?lineupId=CAN-0004264-X', { waitUntil: 'networkidle' });
+              
+              // Extract the JSON content from the page body
+              const content = await page.innerText('body');
+              const channels = JSON.parse(content);
+              
+              const now = new Date().toLocaleString("en-CA", {timeZone: "America/Montreal", hour12: false});
+              const output = { lastUpdated: now, channels: channels };
+
+              fs.writeFileSync('tele.json', JSON.stringify(output, null, 2));
+              console.log("Success: tele.json saved.");
+            } catch (error) {
+              console.error("Failed to fetch:", error);
+              process.exit(1);
+            } finally {
+              await browser.close();
+            }
+          })();
           EOF
 
       - name: Commit and Push
@@ -67,10 +64,4 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add tele.json
-          # Check if there are changes before committing
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "Update TV listings ($(date))"
-            git push
-          fi
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update TV listings Playwright" && git push)
