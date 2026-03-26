@@ -2,97 +2,230 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Guide TV MTL</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TV MTL Pro</title>
     <style>
-        :root { --accent: #00a2ff; --bg: #ffffff; --card: #f2f2f7; --text: #1c1c1e; --border: #d1d1d6; }
-        @media (prefers-color-scheme: dark) {
-            :root { --bg: #000000; --card: #1c1c1e; --text: #f2f2f7; --border: #38383a; }
+        :root { 
+            --accent: #007aff; 
+            --live: #ff3b30;
+            --bg: #ffffff; 
+            --card: #f2f2f7; 
+            --text: #1c1c1e; 
+            --border: #d1d1d6; 
         }
-        body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 15px; }
-        .container { max-width: 600px; margin: auto; }
+        @media (prefers-color-scheme: dark) {
+            :root { 
+                --bg: #000000; 
+                --card: #1c1c1e; 
+                --text: #f2f2f7; 
+                --border: #38383a; 
+            }
+        }
+
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            background: var(--bg); 
+            color: var(--text); 
+            margin: 0; 
+            padding: 10px;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .container { max-width: 500px; margin: auto; }
         
-        .header { position: sticky; top: 0; background: var(--bg); z-index: 10; padding: 10px 0 20px 0; }
-        .search { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--text); font-size: 1rem; box-sizing: border-box; }
+        .header { 
+            position: sticky; 
+            top: 0; 
+            background: var(--bg); 
+            z-index: 100; 
+            padding: 10px 0 15px 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 15px;
+        }
 
-        .card { background: var(--card); border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 1px solid var(--border); }
-        .ch-info { display: flex; justify-content: space-between; font-size: 0.7rem; font-weight: 700; color: #8e8e93; text-transform: uppercase; margin-bottom: 5px; }
-        .prog-title { font-size: 1.15rem; font-weight: 700; color: var(--accent); cursor: pointer; margin: 4px 0; }
-        .prog-time { font-size: 0.9rem; font-weight: 500; }
+        .search-wrapper { position: relative; display: flex; align-items: center; }
+        .search { 
+            width: 100%; 
+            padding: 12px 40px 12px 15px; 
+            border-radius: 12px; 
+            border: none; 
+            background: var(--card); 
+            color: var(--text); 
+            font-size: 16px; /* Prevents iOS/Android zoom on focus */
+            outline: none;
+        }
 
-        .next-list { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; display: none; }
+        .clear-btn {
+            position: absolute;
+            right: 10px;
+            background: #8e8e93;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            font-size: 12px;
+            display: none;
+            cursor: pointer;
+        }
+
+        .card { 
+            background: var(--card); 
+            border-radius: 14px; 
+            padding: 15px; 
+            margin-bottom: 12px; 
+            border: 1px solid var(--border);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        .ch-row { 
+            display: flex; 
+            justify-content: space-between; 
+            font-size: 11px; 
+            font-weight: 800; 
+            color: #8e8e93; 
+            text-transform: uppercase; 
+            letter-spacing: 0.5px;
+        }
+
+        .prog-title { 
+            font-size: 1.2rem; 
+            font-weight: 700; 
+            margin: 6px 0; 
+            color: var(--accent);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Live indicator for the current show */
+        .is-live { color: var(--live); }
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--live);
+            border-radius: 50%;
+            display: inline-block;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(1.2); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        .prog-time { font-size: 0.95rem; font-weight: 500; opacity: 0.9; }
+
+        .next-list { 
+            margin-top: 12px; 
+            border-top: 1px solid var(--border); 
+            padding-top: 10px; 
+            display: none; 
+        }
         .next-list.visible { display: block; }
-        .next-item { display: flex; gap: 10px; font-size: 0.85rem; padding: 4px 0; }
-        .next-time { color: var(--accent); font-weight: 600; min-width: 55px; }
 
-        footer { text-align: center; font-size: 0.7rem; color: #8e8e93; padding: 20px; }
+        .next-item { 
+            display: flex; 
+            gap: 12px; 
+            font-size: 0.9rem; 
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(142, 142, 147, 0.1);
+        }
+        .next-time { color: var(--accent); font-weight: 700; min-width: 50px; }
+
+        footer { text-align: center; font-size: 11px; color: #8e8e93; padding: 30px 0; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <div class="header">
-        <h2 style="margin: 0 0 10px 0;">Ma Télé Montréal</h2>
-        <input type="text" id="searchInput" class="search" placeholder="Chercher une émission ou un poste..." onkeyup="doSearch()">
+        <div class="search-wrapper">
+            <input type="text" id="searchInput" class="search" placeholder="Rechercher..." onkeyup="handleSearch()">
+            <button id="clearBtn" class="clear-btn" onclick="clearSearch()">✕</button>
+        </div>
     </div>
 
-    <div id="guide">Chargement...</div>
+    <div id="guide">Chargement du guide...</div>
     
-    <footer>Dernière sync : <span id="sync-time">...</span></footer>
+    <footer>
+        Dernière mise à jour : <span id="sync-time">...</span>
+    </footer>
 </div>
 
 <script>
+    // These match the IDs generated by the XMLTV action
     const MY_FAVS = ['CBFT', 'CIVM', 'CFTM', 'CFJP', 'CBMT', 'LCN', 'SERIES'];
     let fullData = [];
 
-    async function start() {
+    async function init() {
         try {
+            // Using a timestamp to bypass S7 browser cache
             const res = await fetch('./tele.json?v=' + Date.now());
             const data = await res.json();
             document.getElementById('sync-time').innerText = data.lastUpdated;
-            
-            fullData = data.channels.filter(c => 
-                MY_FAVS.some(f => (c.callSign||"").toUpperCase().includes(f))
-            ).sort((a,b) => MY_FAVS.findIndex(f => a.callSign.includes(f)) - MY_FAVS.findIndex(f => b.callSign.includes(f)));
-
-            display(fullData);
+            fullData = data.channels;
+            render(fullData);
         } catch (e) {
-            document.getElementById('guide').innerText = "En attente des données de l'Action GitHub...";
+            document.getElementById('guide').innerHTML = "Données indisponibles.";
         }
     }
 
-    function display(list) {
-        const guide = document.getElementById('guide');
-        guide.innerHTML = list.length ? "" : "Aucun poste trouvé.";
+    function render(list) {
+        const container = document.getElementById('guide');
+        container.innerHTML = list.length ? "" : "<div style='text-align:center; padding:20px;'>Aucun résultat</div>";
 
         list.forEach((ch, i) => {
             const now = ch.listings[0];
-            const future = ch.listings.slice(1, 10);
+            const future = ch.listings.slice(1, 12); // Show next 12 hours
             
             const div = document.createElement('div');
             div.className = 'card';
             div.innerHTML = `
-                <div class="ch-info"><span>${ch.listName}</span><span>CH ${ch.channel}</span></div>
-                <div class="prog-title" onclick="document.getElementById('nx-${i}').classList.toggle('visible')">${now.title}</div>
-                <div class="prog-time">${now.startTime} — ${now.duration} min</div>
+                <div class="ch-row"><span>${ch.listName}</span><span>${ch.callSign}</span></div>
+                <div class="prog-title is-live" onclick="toggleSched(${i})">
+                    <span class="live-dot"></span>${now.title}
+                </div>
+                <div class="prog-time">${now.startTime} — Suivant à ${future[0]?.startTime || '...'}</div>
                 <div id="nx-${i}" class="next-list">
-                    ${future.map(f => `<div class="next-item"><span class="next-time">${f.startTime}</span><span>${f.title}</span></div>`).join('')}
+                    ${future.map(f => `
+                        <div class="next-item">
+                            <span class="next-time">${f.startTime}</span>
+                            <span>${f.title}</span>
+                        </div>
+                    `).join('')}
                 </div>
             `;
-            guide.appendChild(div);
+            container.appendChild(div);
         });
     }
 
-    function doSearch() {
+    function handleSearch() {
         const q = document.getElementById('searchInput').value.toLowerCase();
+        const btn = document.getElementById('clearBtn');
+        btn.style.display = q ? 'block' : 'none';
+
         const filtered = fullData.filter(c => 
             c.listName.toLowerCase().includes(q) || 
             c.listings.some(l => l.title.toLowerCase().includes(q))
         );
-        display(filtered);
+        render(filtered);
     }
 
-    start();
+    function clearSearch() {
+        document.getElementById('searchInput').value = '';
+        document.getElementById('clearBtn').style.display = 'none';
+        render(fullData);
+    }
+
+    function toggleSched(id) {
+        const el = document.getElementById(`nx-${id}`);
+        el.classList.toggle('visible');
+    }
+
+    init();
 </script>
 </body>
 </html>
