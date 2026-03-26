@@ -1,4 +1,4 @@
-name: Update TV Listings (Permanent XMLTV)
+name: Update TV Listings (Resilient)
 
 on:
   schedule:
@@ -14,7 +14,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Fetch and Convert XMLTV
+      - name: Fetch and Process Data
         run: |
           python3 <<EOF
           import urllib.request
@@ -22,10 +22,12 @@ jobs:
           import json
           from datetime import datetime
 
-          # Use a stable, primary IPTV community source
-          XML_URL = "https://iptv-org.github.io/epg/guides/ca/tvtv.ca.epg.xml"
+          # Primary and Fallback URLs for Montreal EPG
+          URLS = [
+              "https://iptv-org.github.io/epg/guides/ca/tvtv.ca.epg.xml",
+              "https://raw.githubusercontent.com/iptv-org/epg/master/guides/ca/tvtv.ca.epg.xml"
+          ]
           
-          # Exact Station Mapping for Montreal
           FAV_CHANNELS = {
               "CBFT.ca": "CBFT (SRC)",
               "CIVM.ca": "CIVM (TQ)",
@@ -36,51 +38,41 @@ jobs:
               "SERIESPLUS.ca": "SERIES+"
           }
 
-          try:
-              print(f"Connecting to {XML_URL}...")
-              req = urllib.request.Request(XML_URL, headers={'User-Agent': 'Mozilla/5.0'})
-              with urllib.request.urlopen(req) as response:
-                  tree = ET.parse(response)
-                  root = tree.getroot()
+          def fetch_xml():
+              for url in URLS:
+                  try:
+                      print(f"Trying {url}...")
+                      req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                      with urllib.request.urlopen(req, timeout=30) as response:
+                          return ET.parse(response).getroot()
+                  except Exception as e:
+                      print(f"Failed to fetch from {url}: {e}")
+              return None
 
-              output_channels = []
-              
-              for ch_id, display_name in FAV_CHANNELS.items():
-                  ch_obj = {
-                      "listName": display_name,
-                      "callSign": ch_id.split('.')[0],
-                      "channel": "Digital",
-                      "listings": []
-                  }
-                  
-                  # Find programs matching this specific ID
-                  for prog in root.findall(f"programme[@channel='{ch_id}']"):
-                      # Format: 20260326180000 +0000
-                      raw_start = prog.get('start').split(' ')[0]
-                      dt = datetime.strptime(raw_start, '%Y%m%d%H%M%S')
-                      
-                      ch_obj["listings"].append({
-                          "title": prog.find('title').text,
-                          "startTime": dt.strftime('%H:%M'),
-                          "duration": "N/A"
-                      })
-                  
-                  if ch_obj["listings"]:
-                      ch_obj["listings"].sort(key=lambda x: x['startTime'])
-                      output_channels.append(ch_obj)
-
-              if not output_channels:
-                  raise Exception("No matching channels found in the XML.")
-
-              now_mtl = datetime.now().strftime('%Y-%m-%d %H:%M')
-              with open('tele.json', 'w', encoding='utf-8') as f:
-                  json.dump({"lastUpdated": now_mtl, "channels": output_channels}, f, ensure_ascii=False, indent=2)
-              
-              print("Success! Dashboard updated.")
-
-          except Exception as e:
-              print(f"Error encountered: {e}")
+          root = fetch_xml()
+          if root is None:
+              print("All sources failed.")
               exit(1)
+
+          output_channels = []
+          for ch_id, display_name in FAV_CHANNELS.items():
+              ch_obj = {"listName": display_name, "callSign": ch_id.split('.')[0], "listings": []}
+              for prog in root.findall(f"programme[@channel='{ch_id}']"):
+                  raw_start = prog.get('start').split(' ')[0]
+                  dt = datetime.strptime(raw_start, '%Y%m%d%H%M%S')
+                  ch_obj["listings"].append({
+                      "title": prog.find('title').text,
+                      "startTime": dt.strftime('%H:%M')
+                  })
+              
+              if ch_obj["listings"]:
+                  ch_obj["listings"].sort(key=lambda x: x['startTime'])
+                  output_channels.append(ch_obj)
+
+          now_mtl = datetime.now().strftime('%Y-%m-%d %H:%M')
+          with open('tele.json', 'w', encoding='utf-8') as f:
+              json.dump({"lastUpdated": now_mtl, "channels": output_channels}, f, ensure_ascii=False, indent=2)
+          print("Success!")
           EOF
 
       - name: Commit and Push
@@ -88,4 +80,4 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add tele.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update TV Grid via Stable XML" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update TV Grid" && git push)
