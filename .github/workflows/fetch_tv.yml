@@ -16,13 +16,27 @@ jobs:
 
       - name: Fetch and Stamp Data
         run: |
-          # Fetch the data
-          RAW_DATA=$(curl -s "https://www.tvtv.ca/api/grid?lineupId=CAN-0004264-X")
+          # Define "Human" Headers
+          USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          REFERER="https://www.tvtv.ca/qc/montreal/h4a1e1/luCAN-0004264-X"
           
-          # Create a wrapper JSON with the timestamp and the raw data
-          # We use 'date' to get the current time in Montreal (EDT/EST)
-          TIMESTAMP=$(TZ="America/Montreal" date +"%Y-%m-%d %H:%M")
-          echo "{ \"lastUpdated\": \"$TIMESTAMP\", \"channels\": $RAW_DATA }" > tele.json
+          # Perform the fetch with multiple headers
+          RAW_DATA=$(curl -s \
+            -H "User-Agent: $USER_AGENT" \
+            -H "Referer: $REFERER" \
+            -H "Accept: application/json, text/plain, */*" \
+            "https://www.tvtv.ca/api/grid?lineupId=CAN-0004264-X")
+          
+          # Sanity check: Ensure the output starts with a JSON bracket [ or {
+          if [[ $RAW_DATA == \[* ]] || [[ $RAW_DATA == \{* ]]; then
+            TIMESTAMP=$(TZ="America/Montreal" date +"%Y-%m-%d %H:%M")
+            echo "{ \"lastUpdated\": \"$TIMESTAMP\", \"channels\": $RAW_DATA }" > tele.json
+            echo "Success: JSON data saved to tele.json"
+          else
+            echo "Error: Received HTML or empty response instead of JSON."
+            echo "First 100 characters of response: ${RAW_DATA:0:100}"
+            exit 1
+          fi
 
       - name: Commit and Push
         run: |
