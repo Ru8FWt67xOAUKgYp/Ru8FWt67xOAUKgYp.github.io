@@ -1,4 +1,4 @@
-name: Update TV Listings (Stable)
+name: Update TV Listings (Stable Source)
 
 on:
   schedule:
@@ -14,23 +14,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Fetch Data
+      - name: Fetch and Process Data
         run: |
-          # Using a common JSON mirror for Canadian TV Grid (Montreal)
-          # This avoids the Cloudflare wall on the main tvtv site
-          URL="https://api.allorigins.win/get?url=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("https://www.tvtv.ca/api/grid?lineupId=CAN-0004264-X"))')"
+          # Fetching from a community mirror for Canadian listings
+          # This returns a simpler format that we will adapt for your dashboard
+          RESPONSE=$(curl -s "https://api.allorigins.win/get?url=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("https://www.tvtv.ca/api/grid?lineupId=CAN-0004264-X"))')")
           
-          RESPONSE=$(curl -s "$URL")
-          
-          # Clean and Extract
-          RAW_DATA=$(echo "$RESPONSE" | python3 -c "import sys, json; print(json.loads(sys.stdin.read())['contents'])")
-          
-          if [[ $RAW_DATA == \[* ]]; then
+          # Check if the proxy actually got through
+          CHECK=$(echo "$RESPONSE" | python3 -c "import sys, json; data=json.loads(sys.stdin.read()); print('OK' if 'contents' in data and data['contents'].startswith('[') else 'FAIL')")
+
+          if [ "$CHECK" == "OK" ]; then
             MTL_TIME=$(TZ="America/Montreal" date +"%Y-%m-%d %H:%M")
-            echo "{ \"lastUpdated\": \"$MTL_TIME\", \"channels\": $RAW_DATA }" > tele.json
-            echo "Success: Data stored."
+            RAW_CONTENTS=$(echo "$RESPONSE" | python3 -c "import sys, json; print(json.loads(sys.stdin.read())['contents'])")
+            echo "{ \"lastUpdated\": \"$MTL_TIME\", \"channels\": $RAW_CONTENTS }" > tele.json
+            echo "Success: tele.json updated."
           else
-            echo "Error: Data format invalid."
+            echo "Error: Still blocked by Cloudflare. Site is unreachable from GitHub."
             exit 1
           fi
 
