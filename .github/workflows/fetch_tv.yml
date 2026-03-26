@@ -1,4 +1,4 @@
-name: Update TV Listings (Stable XMLTV)
+name: Update TV Listings (Permanent XMLTV)
 
 on:
   schedule:
@@ -22,22 +22,22 @@ jobs:
           import json
           from datetime import datetime
 
-          # A reliable public mirror for Canadian TV (Montreal focus)
-          XML_URL = "https://raw.githubusercontent.com/mcarvalho756/iptv-iptv/master/guide.xml"
+          # Use a stable, primary IPTV community source
+          XML_URL = "https://iptv-org.github.io/epg/guides/ca/tvtv.ca.epg.xml"
           
-          # Stations we want to map (matching your favorites)
-          FAV_MAP = {
-              "Radio-Canada": "CBFT",
-              "Télé-Québec": "CIVM",
-              "TVA Montreal": "CFTM",
-              "Noovo Montreal": "CFJP",
-              "CBC Montreal": "CBMT",
-              "LCN": "LCN",
-              "Séries Plus": "SERIES"
+          # Exact Station Mapping for Montreal
+          FAV_CHANNELS = {
+              "CBFT.ca": "CBFT (SRC)",
+              "CIVM.ca": "CIVM (TQ)",
+              "CFTM.ca": "CFTM (TVA)",
+              "CFJP.ca": "CFJP (Noovo)",
+              "CBMT.ca": "CBMT (CBC)",
+              "LCN.ca": "LCN",
+              "SERIESPLUS.ca": "SERIES+"
           }
 
           try:
-              print("Fetching XML feed...")
+              print(f"Connecting to {XML_URL}...")
               req = urllib.request.Request(XML_URL, headers={'User-Agent': 'Mozilla/5.0'})
               with urllib.request.urlopen(req) as response:
                   tree = ET.parse(response)
@@ -45,45 +45,41 @@ jobs:
 
               output_channels = []
               
-              # Extract program info
-              for channel in root.findall('channel'):
-                  name = channel.find('display-name').text
-                  match_key = next((k for k in FAV_MAP if k in name), None)
+              for ch_id, display_name in FAV_CHANNELS.items():
+                  ch_obj = {
+                      "listName": display_name,
+                      "callSign": ch_id.split('.')[0],
+                      "channel": "Digital",
+                      "listings": []
+                  }
                   
-                  if match_key:
-                      ch_data = {
-                          "listName": name,
-                          "callSign": FAV_MAP[match_key],
-                          "channel": channel.get('id').split('.')[-1],
-                          "listings": []
-                      }
+                  # Find programs matching this specific ID
+                  for prog in root.findall(f"programme[@channel='{ch_id}']"):
+                      # Format: 20260326180000 +0000
+                      raw_start = prog.get('start').split(' ')[0]
+                      dt = datetime.strptime(raw_start, '%Y%m%d%H%M%S')
                       
-                      # Find programs for this channel
-                      for prog in root.findall(f"programme[@channel='{channel.get('id')}']"):
-                          start_str = prog.get('start').split(' ')[0]
-                          # Convert XML time (20260326180000) to HH:MM
-                          dt = datetime.strptime(start_str, '%Y%m%d%H%M%S')
-                          
-                          ch_data["listings"].append({
-                              "title": prog.find('title').text,
-                              "startTime": dt.strftime('%H:%M'),
-                              "duration": "N/A", # XMLTV doesn't always provide duration directly
-                              "description": prog.find('desc').text if prog.find('desc') is not None else ""
-                          })
-                      
-                      # Sort by time and keep next 10
-                      ch_data["listings"].sort(key=lambda x: x['startTime'])
-                      output_channels.append(ch_data)
+                      ch_obj["listings"].append({
+                          "title": prog.find('title').text,
+                          "startTime": dt.strftime('%H:%M'),
+                          "duration": "N/A"
+                      })
+                  
+                  if ch_obj["listings"]:
+                      ch_obj["listings"].sort(key=lambda x: x['startTime'])
+                      output_channels.append(ch_obj)
 
-              now_str = datetime.now().strftime('%Y-%m-%d %H:%M')
-              final_json = {"lastUpdated": now_str, "channels": output_channels}
-              
+              if not output_channels:
+                  raise Exception("No matching channels found in the XML.")
+
+              now_mtl = datetime.now().strftime('%Y-%m-%d %H:%M')
               with open('tele.json', 'w', encoding='utf-8') as f:
-                  json.dump(final_json, f, ensure_ascii=False, indent=2)
-              print("Success! tele.json generated.")
+                  json.dump({"lastUpdated": now_mtl, "channels": output_channels}, f, ensure_ascii=False, indent=2)
+              
+              print("Success! Dashboard updated.")
 
           except Exception as e:
-              print(f"Failed: {e}")
+              print(f"Error encountered: {e}")
               exit(1)
           EOF
 
@@ -92,4 +88,4 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add tele.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update TV Grid via XMLTV" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update TV Grid via Stable XML" && git push)
