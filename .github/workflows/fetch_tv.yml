@@ -1,4 +1,4 @@
-name: Update TV Listings (Stable)
+name: Update TV Listings (Stable XMLTV)
 
 on:
   schedule:
@@ -14,39 +14,77 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Fetch via Node
+      - name: Fetch and Convert XMLTV
         run: |
-          node <<EOF
-          const fs = require('fs');
+          python3 <<EOF
+          import urllib.request
+          import xml.etree.ElementTree as ET
+          import json
+          from datetime import datetime
 
-          async function fetchData() {
-            const target = "https://www.tvtv.ca/api/grid?lineupId=CAN-0004264-X";
-            const proxy = "https://api.allorigins.win/get?url=" + encodeURIComponent(target);
-            
-            try {
-              const res = await fetch(proxy);
-              const data = await res.json();
-              
-              // AllOrigins returns the stringified JSON in 'contents'
-              const rawContents = data.contents;
-              
-              // Try to parse the inner string to ensure it's valid TV data
-              const channels = JSON.parse(rawContents);
-              
-              if (Array.isArray(channels)) {
-                const now = new Date().toLocaleString("en-CA", {timeZone: "America/Montreal", hour12: false});
-                const output = { lastUpdated: now, channels: channels };
-                fs.writeFileSync('tele.json', JSON.stringify(output, null, 2));
-                console.log("Success: tele.json created.");
-              } else {
-                throw new Error("Data is not an array");
-              }
-            } catch (err) {
-              console.error("Fetch failed: ", err.message);
-              process.exit(1);
-            }
+          # A reliable public mirror for Canadian TV (Montreal focus)
+          XML_URL = "https://raw.githubusercontent.com/mcarvalho756/iptv-iptv/master/guide.xml"
+          
+          # Stations we want to map (matching your favorites)
+          FAV_MAP = {
+              "Radio-Canada": "CBFT",
+              "Télé-Québec": "CIVM",
+              "TVA Montreal": "CFTM",
+              "Noovo Montreal": "CFJP",
+              "CBC Montreal": "CBMT",
+              "LCN": "LCN",
+              "Séries Plus": "SERIES"
           }
-          fetchData();
+
+          try:
+              print("Fetching XML feed...")
+              req = urllib.request.Request(XML_URL, headers={'User-Agent': 'Mozilla/5.0'})
+              with urllib.request.urlopen(req) as response:
+                  tree = ET.parse(response)
+                  root = tree.getroot()
+
+              output_channels = []
+              
+              # Extract program info
+              for channel in root.findall('channel'):
+                  name = channel.find('display-name').text
+                  match_key = next((k for k in FAV_MAP if k in name), None)
+                  
+                  if match_key:
+                      ch_data = {
+                          "listName": name,
+                          "callSign": FAV_MAP[match_key],
+                          "channel": channel.get('id').split('.')[-1],
+                          "listings": []
+                      }
+                      
+                      # Find programs for this channel
+                      for prog in root.findall(f"programme[@channel='{channel.get('id')}']"):
+                          start_str = prog.get('start').split(' ')[0]
+                          # Convert XML time (20260326180000) to HH:MM
+                          dt = datetime.strptime(start_str, '%Y%m%d%H%M%S')
+                          
+                          ch_data["listings"].append({
+                              "title": prog.find('title').text,
+                              "startTime": dt.strftime('%H:%M'),
+                              "duration": "N/A", # XMLTV doesn't always provide duration directly
+                              "description": prog.find('desc').text if prog.find('desc') is not None else ""
+                          })
+                      
+                      # Sort by time and keep next 10
+                      ch_data["listings"].sort(key=lambda x: x['startTime'])
+                      output_channels.append(ch_data)
+
+              now_str = datetime.now().strftime('%Y-%m-%d %H:%M')
+              final_json = {"lastUpdated": now_str, "channels": output_channels}
+              
+              with open('tele.json', 'w', encoding='utf-8') as f:
+                  json.dump(final_json, f, ensure_ascii=False, indent=2)
+              print("Success! tele.json generated.")
+
+          except Exception as e:
+              print(f"Failed: {e}")
+              exit(1)
           EOF
 
       - name: Commit and Push
@@ -54,4 +92,4 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add tele.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update TV Grid" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update TV Grid via XMLTV" && git push)
