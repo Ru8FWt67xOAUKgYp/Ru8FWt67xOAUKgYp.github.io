@@ -3,110 +3,91 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Guide TV Montréal 24H</title>
+    <title>TV MTL Dashboard</title>
     <style>
-        :root { --accent: #00a2ff; --bg: #ffffff; --card: #f8f9fa; --text: #1a1a1a; --border: #eee; --muted: #666; }
+        :root { --accent: #00a2ff; --bg: #ffffff; --card: #f1f3f5; --text: #1a1a1a; --border: #ddd; }
         @media (prefers-color-scheme: dark) {
-            :root { --bg: #0d0d0d; --card: #181818; --text: #e0e0e0; --border: #2a2a2a; --muted: #888; }
+            :root { --bg: #0d0d0d; --card: #1a1a1a; --text: #eee; --border: #333; }
         }
-
-        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 15px; }
-        .container { max-width: 650px; margin: auto; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 15px; }
+        .container { max-width: 600px; margin: auto; }
         
-        header { display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px; }
-        .search-box { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--text); box-sizing: border-box; font-size: 1rem; }
-
-        .card { background: var(--card); border-radius: 12px; border: 1px solid var(--border); margin-bottom: 15px; padding: 15px; position: relative; }
-        .card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--accent); border-radius: 12px 0 0 12px; }
+        .search-bar { width: 100%; padding: 12px; margin-bottom: 20px; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--text); box-sizing: border-box; }
         
-        .ch-info { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--muted); font-weight: 800; text-transform: uppercase; margin-bottom: 8px; }
-        .now-playing { font-size: 1.15rem; font-weight: 700; color: var(--accent); margin-bottom: 5px; cursor: pointer; }
-        .now-time { font-size: 0.85rem; margin-bottom: 12px; }
-
-        .full-schedule { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; font-size: 0.9rem; }
-        .schedule-item { display: flex; gap: 10px; margin-bottom: 8px; padding: 4px 0; }
-        .schedule-time { min-width: 65px; color: var(--accent); font-weight: 600; }
-        .schedule-title { flex: 1; }
-
-        .hidden { display: none; }
-        footer { text-align: center; font-size: 0.7rem; color: var(--muted); padding: 20px 0; border-top: 1px solid var(--border); }
+        .card { background: var(--card); border-radius: 12px; padding: 16px; margin-bottom: 12px; border-left: 5px solid var(--accent); position: relative; }
+        .ch-header { display: flex; justify-content: space-between; font-size: 0.75rem; font-weight: bold; color: #888; text-transform: uppercase; margin-bottom: 5px; }
+        .title { font-size: 1.1rem; font-weight: 700; margin-bottom: 5px; cursor: pointer; }
+        .time { font-size: 0.85rem; color: var(--accent); font-weight: 600; }
+        
+        /* Schedule/Popup Area */
+        .schedule { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; font-size: 0.9rem; display: none; }
+        .schedule.open { display: block; }
+        .item { display: flex; gap: 10px; margin-bottom: 6px; }
+        .item-time { color: var(--accent); font-weight: bold; min-width: 60px; }
+        
+        footer { text-align: center; font-size: 0.7rem; color: #666; margin-top: 30px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <header>
-        <h2 style="margin:0">Ma Télé (24H)</h2>
-        <input type="text" id="search" class="search-box" placeholder="Chercher une émission ou un poste..." onkeyup="filterGuide()">
-    </header>
-
-    <div id="guide"></div>
-
-    <footer>Mise à jour: <span id="update-time">...</span></footer>
+    <input type="text" id="search" class="search-bar" placeholder="Chercher une émission (ex: Nouvelles, Hockey)..." onkeyup="doSearch()">
+    <div id="guide">Chargement...</div>
+    <footer>Mise à jour: <span id="sync">...</span></footer>
 </div>
 
 <script>
-    const MY_FAVORITES = ['CBFT', 'CIVM', 'CFTM', 'CFJP', 'CBMT', 'LCN', 'SERIES'];
-    let fullData = [];
+    const FAVS = ['CBFT', 'CIVM', 'CFTM', 'CFJP', 'CBMT', 'LCN', 'SERIES'];
+    let localStore = [];
 
-    async function init() {
+    async function load() {
         try {
-            const res = await fetch('./tele.json?v=' + Date.now());
-            const data = await res.json();
-            document.getElementById('update-time').innerText = data.lastUpdated;
+            const r = await fetch('./tele.json?t=' + Date.now());
+            const d = await r.json();
+            document.getElementById('sync').innerText = d.lastUpdated;
             
-            // Filter only our favorites
-            fullData = data.channels.filter(s => 
-                MY_FAVORITES.some(f => (s.callSign||"").toUpperCase().includes(f))
-            ).sort((a,b) => 
-                MY_FAVORITES.findIndex(f => a.callSign.includes(f)) - MY_FAVORITES.findIndex(f => b.callSign.includes(f))
-            );
-
-            renderGuide(fullData);
-        } catch (e) { document.getElementById('guide').innerText = "Erreur de chargement."; }
+            localStore = d.channels.filter(c => 
+                FAVS.some(f => (c.callSign||"").toUpperCase().includes(f))
+            ).sort((a,b) => FAVS.findIndex(f => a.callSign.includes(f)) - FAVS.findIndex(f => b.callSign.includes(f)));
+            
+            render(localStore);
+        } catch(e) { document.getElementById('guide').innerText = "Erreur de synchro."; }
     }
 
-    function renderGuide(channels) {
-        const guide = document.getElementById('guide');
-        guide.innerHTML = channels.length ? "" : "<p style='text-align:center; color:#888;'>Aucun résultat trouvé.</p>";
-
-        channels.forEach((s, idx) => {
-            const current = s.listings[0];
-            const upcoming = s.listings.slice(1, 10); // Show next 9 shows on click
-
+    function render(data) {
+        const g = document.getElementById('guide');
+        g.innerHTML = "";
+        data.forEach((ch, i) => {
+            const now = ch.listings[0];
+            const future = ch.listings.slice(1, 8);
             const div = document.createElement('div');
             div.className = 'card';
             div.innerHTML = `
-                <div class="ch-info"><span>${s.listName}</span><span>CH ${s.channel}</span></div>
-                <div class="now-playing" onclick="toggleSched(${idx})">${current.title}</div>
-                <div class="now-time">${current.startTime} — ${current.duration} min</div>
-                <div id="sched-${idx}" class="full-schedule hidden">
-                    ${upcoming.map(u => `
-                        <div class="schedule-item">
-                            <span class="schedule-time">${u.startTime}</span>
-                            <span class="schedule-title">${u.title}</span>
-                        </div>
-                    `).join('')}
+                <div class="ch-header"><span>${ch.listName}</span><span>CH ${ch.channel}</span></div>
+                <div class="title" onclick="toggle(${i})">${now.title}</div>
+                <div class="time">${now.startTime} (${now.duration}m)</div>
+                <div id="sched-${i}" class="schedule">
+                    ${future.map(f => `<div class="item"><span class="item-time">${f.startTime}</span><span>${f.title}</span></div>`).join('')}
                 </div>
             `;
-            guide.appendChild(div);
+            g.appendChild(div);
         });
     }
 
-    function filterGuide() {
-        const query = document.getElementById('search').value.toLowerCase();
-        const filtered = fullData.filter(s => 
-            s.listName.toLowerCase().includes(query) || 
-            s.listings.some(l => l.title.toLowerCase().includes(query))
+    function doSearch() {
+        const q = document.getElementById('search').value.toLowerCase();
+        const filtered = localStore.filter(c => 
+            c.listName.toLowerCase().includes(q) || 
+            c.listings.some(l => l.title.toLowerCase().includes(q))
         );
-        renderGuide(filtered);
+        render(filtered);
     }
 
-    function toggleSched(id) {
-        document.getElementById(`sched-${id}`).classList.toggle('hidden');
+    function toggle(id) {
+        document.getElementById(`sched-${id}`).classList.toggle('open');
     }
 
-    init();
+    load();
 </script>
 </body>
 </html>
