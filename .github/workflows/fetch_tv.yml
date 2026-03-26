@@ -1,3 +1,4 @@
+ 
 name: Update TV Listings (Playwright)
 
 on:
@@ -17,7 +18,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24' # Updated to remove the deprecation warning
 
       - name: Install Playwright
         run: |
@@ -31,10 +32,7 @@ jobs:
           const fs = require('fs');
 
           (async () => {
-            // Launch browser
             const browser = await chromium.launch();
-            
-            // Create context with the User Agent correctly defined here
             const context = await browser.newContext({
               userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
             });
@@ -43,18 +41,16 @@ jobs:
 
             try {
               console.log("Navigating to API...");
-              // We go to the page and wait for it to settle
+              // Go to the API URL
               await page.goto('https://www.tvtv.ca/api/grid?lineupId=CAN-0004264-X', { 
-                waitUntil: 'networkidle',
+                waitUntil: 'domcontentloaded', 
                 timeout: 60000 
               });
               
-              // Give Cloudflare an extra 2 seconds to "blink"
-              await page.waitForTimeout(2000);
+              // Wait for the body to contain JSON-like characters to bypass the 'Just a moment' screen
+              await page.waitForFunction(() => document.body.innerText.trim().startsWith('[') || document.body.innerText.trim().startsWith('{'), { timeout: 30000 });
 
               const content = await page.innerText('body');
-              
-              // Validate that we actually got JSON and not an error page
               const channels = JSON.parse(content);
               
               const now = new Date().toLocaleString("en-CA", {timeZone: "America/Montreal", hour12: false});
@@ -64,6 +60,9 @@ jobs:
               console.log("Success: tele.json updated.");
             } catch (error) {
               console.error("Failed to fetch or parse JSON:", error.message);
+              // Log the page content to see what Cloudflare is showing us
+              const body = await page.innerText('body').catch(() => 'No body content');
+              console.log("Page Content Snippet:", body.substring(0, 200));
               process.exit(1);
             } finally {
               await browser.close();
