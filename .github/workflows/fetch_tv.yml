@@ -14,33 +14,63 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Fetch and Stamp Data
+      - name: Fetch via Proxy
         run: |
-          # Define "Human" Headers
-          USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-          REFERER="https://www.tvtv.ca/qc/montreal/h4a1e1/luCAN-0004264-X"
+          # Use a proxy that specializes in bypassing CORS/Cloudflare
+          TARGET="https://www.tvtv.ca/api/grid?lineupId=CAN-0004264-X"
+          PROXY="https://api.allorigins.win/get?url="
           
-          # Perform the fetch with multiple headers
-          RAW_DATA=$(curl -s \
-            -H "User-Agent: $USER_AGENT" \
-            -H "Referer: $REFERER" \
-            -H "Accept: application/json, text/plain, */*" \
-            "https://www.tvtv.ca/api/grid?lineupId=CAN-0004264-X")
-          
-          # Sanity check: Ensure the output starts with a JSON bracket [ or {
-          if [[ $RAW_DATA == \[* ]] || [[ $RAW_DATA == \{* ]]; then
-            TIMESTAMP=$(TZ="America/Montreal" date +"%Y-%m-%d %H:%M")
-            echo "{ \"lastUpdated\": \"$TIMESTAMP\", \"channels\": $RAW_DATA }" > tele.json
-            echo "Success: JSON data saved to tele.json"
-          else
-            echo "Error: Received HTML or empty response instead of JSON."
-            echo "First 100 characters of response: ${RAW_DATA:0:100}"
-            exit 1
-          fi
+          # We use python to safely encode the URL and process the response
+          python3 <<EOF
+          import urllib.request
+          import urllib.parse
+          import json
+          import os
+          from datetime import datetime
+          import pytz
+
+          try:
+              # Encode the target URL and fetch via proxy
+              encoded_url = urllib.parse.quote("$TARGET", safe='')
+              proxy_url = "$PROXY" + encoded_url
+              
+              print(f"Fetching: {proxy_url}")
+              
+              with urllib.request.urlopen(proxy_url) as response:
+                  data = json.loads(response.read().decode())
+                  # AllOrigins wraps the result in a 'contents' field as a string
+                  raw_channels = json.loads(data['contents'])
+                  
+                  # Set up the timestamp for Montreal
+                  mtl_tz = pytz.timezone('America/Montreal')
+                  now = datetime.now(mtl_tz).strftime('%Y-%m-%d %H:%M')
+                  
+                  # Create the final structure
+                  final_output = {
+                      "lastUpdated": now,
+                      "channels": raw_channels
+                  }
+                  
+                  # Save to tele.json
+                  with open('tele.json', 'w', encoding='utf-8') as f:
+                      json.dump(final_output, f, ensure_ascii=False, indent=2)
+                  
+                  print("Success: tele.json created successfully.")
+
+          except Exception as e:
+              print(f"Error: {e}")
+              exit(1)
+          EOF
 
       - name: Commit and Push
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add tele.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update TV listings ($TIMESTAMP)" && git push)
+          # Check if there are changes before committing
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update TV listings ($(date))"
+            git push
+          fi
