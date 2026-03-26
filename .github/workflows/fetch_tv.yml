@@ -24,34 +24,46 @@ jobs:
           npm install playwright
           npx playwright install chromium --with-deps
 
-      - name: Fetch Data with Headless Browser
+      - name: Fetch Data
         run: |
           node <<EOF
           const { chromium } = require('playwright');
           const fs = require('fs');
 
           (async () => {
+            // Launch browser
             const browser = await chromium.launch();
-            const page = await browser.newPage();
             
-            // Set a realistic User Agent
-            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+            // Create context with the User Agent correctly defined here
+            const context = await browser.newContext({
+              userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+            });
+
+            const page = await context.newPage();
 
             try {
               console.log("Navigating to API...");
-              await page.goto('https://www.tvtv.ca/api/grid?lineupId=CAN-0004264-X', { waitUntil: 'networkidle' });
+              // We go to the page and wait for it to settle
+              await page.goto('https://www.tvtv.ca/api/grid?lineupId=CAN-0004264-X', { 
+                waitUntil: 'networkidle',
+                timeout: 60000 
+              });
               
-              // Extract the JSON content from the page body
+              // Give Cloudflare an extra 2 seconds to "blink"
+              await page.waitForTimeout(2000);
+
               const content = await page.innerText('body');
+              
+              // Validate that we actually got JSON and not an error page
               const channels = JSON.parse(content);
               
               const now = new Date().toLocaleString("en-CA", {timeZone: "America/Montreal", hour12: false});
               const output = { lastUpdated: now, channels: channels };
 
               fs.writeFileSync('tele.json', JSON.stringify(output, null, 2));
-              console.log("Success: tele.json saved.");
+              console.log("Success: tele.json updated.");
             } catch (error) {
-              console.error("Failed to fetch:", error);
+              console.error("Failed to fetch or parse JSON:", error.message);
               process.exit(1);
             } finally {
               await browser.close();
