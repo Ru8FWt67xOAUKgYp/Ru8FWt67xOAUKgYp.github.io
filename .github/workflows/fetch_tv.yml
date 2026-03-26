@@ -1,4 +1,3 @@
- 
 name: Update TV Listings (Playwright)
 
 on:
@@ -18,7 +17,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24' # Updated to remove the deprecation warning
+          node-version: '24'
 
       - name: Install Playwright
         run: |
@@ -32,37 +31,43 @@ jobs:
           const fs = require('fs');
 
           (async () => {
-            const browser = await chromium.launch();
+            const browser = await chromium.launch({ headless: true });
+            
+            // Set up a context that looks exactly like a standard Windows Chrome browser
             const context = await browser.newContext({
-              userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+              userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+              viewport: { width: 1280, height: 720 },
+              locale: 'fr-CA',
+              timezoneId: 'America/Montreal'
             });
 
             const page = await context.newPage();
 
             try {
-              console.log("Navigating to API...");
-              // Go to the API URL
-              await page.goto('https://www.tvtv.ca/api/grid?lineupId=CAN-0004264-X', { 
-                waitUntil: 'domcontentloaded', 
-                timeout: 60000 
-              });
+              console.log("Requesting data via Browser Context...");
               
-              // Wait for the body to contain JSON-like characters to bypass the 'Just a moment' screen
-              await page.waitForFunction(() => document.body.innerText.trim().startsWith('[') || document.body.innerText.trim().startsWith('{'), { timeout: 30000 });
+              // We go to the main site first to get a session cookie
+              await page.goto('https://www.tvtv.ca', { waitUntil: 'networkidle' });
+              await page.waitForTimeout(3000);
 
-              const content = await page.innerText('body');
-              const channels = JSON.parse(content);
-              
+              // Now we perform the API fetch from INSIDE the browser session
+              const response = await page.evaluate(async () => {
+                const res = await fetch('https://www.tvtv.ca/api/grid?lineupId=CAN-0004264-X');
+                return await res.json();
+              });
+
+              if (!response || response.length === 0) throw new Error("API returned empty data");
+
               const now = new Date().toLocaleString("en-CA", {timeZone: "America/Montreal", hour12: false});
-              const output = { lastUpdated: now, channels: channels };
+              const output = { lastUpdated: now, channels: response };
 
               fs.writeFileSync('tele.json', JSON.stringify(output, null, 2));
               console.log("Success: tele.json updated.");
+              
             } catch (error) {
-              console.error("Failed to fetch or parse JSON:", error.message);
-              // Log the page content to see what Cloudflare is showing us
-              const body = await page.innerText('body').catch(() => 'No body content');
-              console.log("Page Content Snippet:", body.substring(0, 200));
+              console.error("Fetch failed:", error.message);
+              // Take a screenshot for debugging if it's still stuck
+              await page.screenshot({ path: 'debug-screenshot.png' });
               process.exit(1);
             } finally {
               await browser.close();
