@@ -1,4 +1,4 @@
-name: Update TV Listings (Stable Source)
+name: Update TV Listings (Stable)
 
 on:
   schedule:
@@ -14,24 +14,40 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Fetch and Process Data
+      - name: Fetch via Node
         run: |
-          # Fetching from a community mirror for Canadian listings
-          # This returns a simpler format that we will adapt for your dashboard
-          RESPONSE=$(curl -s "https://api.allorigins.win/get?url=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("https://www.tvtv.ca/api/grid?lineupId=CAN-0004264-X"))')")
-          
-          # Check if the proxy actually got through
-          CHECK=$(echo "$RESPONSE" | python3 -c "import sys, json; data=json.loads(sys.stdin.read()); print('OK' if 'contents' in data and data['contents'].startswith('[') else 'FAIL')")
+          node <<EOF
+          const fs = require('fs');
 
-          if [ "$CHECK" == "OK" ]; then
-            MTL_TIME=$(TZ="America/Montreal" date +"%Y-%m-%d %H:%M")
-            RAW_CONTENTS=$(echo "$RESPONSE" | python3 -c "import sys, json; print(json.loads(sys.stdin.read())['contents'])")
-            echo "{ \"lastUpdated\": \"$MTL_TIME\", \"channels\": $RAW_CONTENTS }" > tele.json
-            echo "Success: tele.json updated."
-          else
-            echo "Error: Still blocked by Cloudflare. Site is unreachable from GitHub."
-            exit 1
-          fi
+          async function fetchData() {
+            const target = "https://www.tvtv.ca/api/grid?lineupId=CAN-0004264-X";
+            const proxy = "https://api.allorigins.win/get?url=" + encodeURIComponent(target);
+            
+            try {
+              const res = await fetch(proxy);
+              const data = await res.json();
+              
+              // AllOrigins returns the stringified JSON in 'contents'
+              const rawContents = data.contents;
+              
+              // Try to parse the inner string to ensure it's valid TV data
+              const channels = JSON.parse(rawContents);
+              
+              if (Array.isArray(channels)) {
+                const now = new Date().toLocaleString("en-CA", {timeZone: "America/Montreal", hour12: false});
+                const output = { lastUpdated: now, channels: channels };
+                fs.writeFileSync('tele.json', JSON.stringify(output, null, 2));
+                console.log("Success: tele.json created.");
+              } else {
+                throw new Error("Data is not an array");
+              }
+            } catch (err) {
+              console.error("Fetch failed: ", err.message);
+              process.exit(1);
+            }
+          }
+          fetchData();
+          EOF
 
       - name: Commit and Push
         run: |
