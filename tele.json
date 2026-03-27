@@ -1,15 +1,17 @@
 {
-  "lastUpdated": "2026-03-27 05:06",
+  "lastUpdated": "2026-03-27 01 h 23 min 52 s",
   "channels": [
     {
-      "listName": "Error",
-      "callSign": "!",
-      "listings": [
-        {
-          "title": "Retry Action",
-          "startTime": "00:00"
-        }
-      ]
+      "name": "LCN",
+      "site": "tvhebdo.com"
+    },
+    {
+      "name": "LCN",
+      "site": "tvpassport.com"
+    },
+    {
+      "name": "LCN",
+      "site": "tvtv.us"
     }
   ]
 }
