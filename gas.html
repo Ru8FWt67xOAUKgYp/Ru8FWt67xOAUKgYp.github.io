@@ -3,71 +3,77 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Montreal Gas Prices</title>
+    <title>Montreal Gas Dashboard</title>
     <style>
         :root {
-            --bg: #ffffff; --card: #f9f9fb; --text: #111111;
-            --accent: #e53935; --sub: #777777; --brd: #eeeeee;
+            --bg: #ffffff; --card: #f8f9fa; --text: #212529;
+            --accent: #c62828; --muted: #6c757d; --border: #dee2e6;
         }
         @media (prefers-color-scheme: dark) {
             :root {
-                --bg: #121212; --card: #1e1e1e; --text: #f0f0f0;
-                --accent: #ff5252; --sub: #999999; --brd: #333333;
+                --bg: #121212; --card: #1e1e1e; --text: #e9ecef;
+                --accent: #ff5252; --muted: #adb5bd; --border: #343a40;
             }
         }
         body {
-            background: var(--bg); color: var(--text);
+            background-color: var(--bg); color: var(--text);
             font-family: -apple-system, system-ui, sans-serif;
-            margin: 0; padding: 15px; display: flex; justify-content: center;
+            margin: 0; padding: 20px; display: flex; justify-content: center;
         }
-        .container { width: 100%; max-width: 400px; }
+        .container { width: 100%; max-width: 420px; }
         header {
             display: flex; justify-content: space-between; align-items: baseline;
-            border-bottom: 1px solid var(--brd); padding-bottom: 8px; margin-bottom: 15px;
+            border-bottom: 2px solid var(--border); padding-bottom: 10px; margin-bottom: 20px;
         }
-        h1 { font-size: 1.1rem; margin: 0; }
-        #timestamp { font-size: 0.7rem; color: var(--sub); }
-        .station {
-            background: var(--card); padding: 12px; margin-bottom: 10px;
-            border-radius: 8px; display: flex; justify-content: space-between; align-items: center;
+        h1 { font-size: 1.25rem; margin: 0; }
+        #last-update { font-size: 0.75rem; color: var(--muted); }
+        .station-item {
+            background: var(--card); padding: 15px; margin-bottom: 12px;
+            border-radius: 12px; display: flex; justify-content: space-between; align-items: center;
+            border: 1px solid var(--border);
         }
-        .name { font-weight: bold; font-size: 0.95rem; display: block; margin-bottom: 2px; }
-        .map-btn { font-size: 0.8rem; color: var(--accent); text-decoration: none; }
-        .price { font-size: 1.3rem; font-weight: 800; color: var(--accent); }
+        .info { flex: 1; }
+        .station-name { font-weight: 700; display: block; margin-bottom: 3px; }
+        .map-link { font-size: 0.85rem; color: var(--accent); text-decoration: none; }
+        .price-tag { font-size: 1.5rem; font-weight: 900; color: var(--accent); }
     </style>
 </head>
 <body>
 <div class="container">
     <header>
         <h1>Gas (H3W 1X4)</h1>
-        <span id="timestamp">Syncing...</span>
+        <span id="last-update">Syncing...</span>
     </header>
-    <div id="gas-list">Loading data...</div>
+    <div id="gas-display">Searching for lowest prices...</div>
 </div>
 
 <script>
-    async function loadPrices() {
-        const list = document.getElementById('gas-list');
-        const time = document.getElementById('timestamp');
+    async function getGasData() {
+        const container = document.getElementById('gas-display');
+        const updateText = document.getElementById('last-update');
         try {
-            const res = await fetch(`gas_prices.json?nocache=${Date.now()}`);
-            const data = await res.json();
-            list.innerHTML = data.map(s => `
-                <div class="station">
-                    <div>
-                        <span class="name">${s.name}</span>
+            // Cache-busting prevents old data from appearing on refresh
+            const response = await fetch(`gas_prices.json?t=${Date.now()}`);
+            if (!response.ok) throw new Error();
+            
+            const stations = await response.json();
+            container.innerHTML = stations.map(s => `
+                <div class="station-item">
+                    <div class="info">
+                        <span class="station-name">${s.name}</span>
                         <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.name + ' ' + s.address)}" 
-                           target="_blank" class="map-btn">📍 ${s.address}</a>
+                           target="_blank" class="map-link">📍 ${s.address}</a>
                     </div>
-                    <div class="price">${s.price}¢</div>
+                    <div class="price-tag">${s.price}¢</div>
                 </div>
             `).join('');
-            time.innerText = "Updated " + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-        } catch (e) {
-            list.innerHTML = "<p style='text-align:center; color:var(--sub)'>Data file empty or not yet generated.</p>";
+            
+            updateText.innerText = "Updated " + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        } catch (err) {
+            container.innerHTML = "<div style='text-align:center; margin-top:30px; color:var(--muted)'>Data pending... check GitHub Actions logs.</div>";
         }
     }
-    loadPrices();
+    getGasData();
 </script>
 </body>
 </html>
