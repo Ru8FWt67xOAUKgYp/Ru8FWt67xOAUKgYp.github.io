@@ -3,47 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TV MTL</title>
+    <title>TV MTL Pro</title>
     <style>
-        :root { --bg: #000; --card: #1c1c1e; --text: #fff; --accent: #007aff; }
-        body { font-family: sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 15px; }
-        .card { background: var(--card); border-radius: 12px; padding: 15px; margin-bottom: 10px; border: 1px solid #333; }
-        .ch-name { font-weight: 800; font-size: 0.8rem; color: #8e8e93; margin-bottom: 5px; }
-        .title { font-size: 1.2rem; font-weight: 700; color: var(--accent); }
-        .time { font-size: 0.9rem; opacity: 0.7; }
-        footer { text-align: center; font-size: 10px; color: #444; margin-top: 20px; }
+        :root { --bg: #000; --card: #1c1c1e; --text: #f2f2f7; --accent: #007aff; --live: #ff3b30; }
+        body { font-family: sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 10px; }
+        .container { max-width: 500px; margin: auto; }
+        .card { background: var(--card); border-radius: 14px; padding: 15px; margin-bottom: 12px; border: 1px solid #38383a; }
+        .ch-row { display: flex; justify-content: space-between; font-size: 11px; font-weight: 800; color: #8e8e93; text-transform: uppercase; }
+        .prog-title { font-size: 1.2rem; font-weight: 700; margin: 6px 0; color: var(--accent); cursor: pointer; display: flex; align-items: center; gap: 8px; }
+        .live-dot { width: 8px; height: 8px; background: var(--live); border-radius: 50%; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+        .next-list { margin-top: 10px; border-top: 1px solid #38383a; padding-top: 10px; display: none; }
+        .visible { display: block; }
+        .next-item { display: flex; gap: 12px; font-size: 0.9rem; padding: 8px 0; border-bottom: 1px solid #222; }
+        .next-time { color: var(--accent); font-weight: 700; min-width: 50px; }
+        footer { text-align: center; font-size: 11px; color: #444; padding: 20px 0; }
     </style>
 </head>
 <body>
-    <div id="guide">Chargement du guide...</div>
-    <footer id="meta"></footer>
-
+<div class="container">
+    <div id="guide">Chargement...</div>
+    <footer>Dernière synchro : <span id="sync-time">...</span></footer>
+</div>
 <script>
     async function init() {
         try {
             const res = await fetch('./tele.json?v=' + Date.now());
             const data = await res.json();
-            document.getElementById('meta').innerText = "Sync: " + data.lastUpdated;
-            
+            document.getElementById('sync-time').innerText = data.lastUpdated;
             const container = document.getElementById('guide');
             container.innerHTML = "";
 
-            // Loop through channels and show basic info
-            data.channels.forEach(ch => {
+            data.channels.forEach((ch, i) => {
+                const now = ch.listings[0] || {title: "Info indisponible", startTime: "--:--"};
+                const future = ch.listings.slice(1, 8);
                 const div = document.createElement('div');
                 div.className = 'card';
                 div.innerHTML = `
-                    <div class="ch-name">${ch.name}</div>
-                    <div class="title">En direct...</div>
-                    <div class="time">Consulter l'horaire complet</div>
-                `;
-                // If you want to link directly to the source for detail:
-                div.onclick = () => window.open(ch.url, '_blank');
+                    <div class="ch-row"><span>${ch.name}</span></div>
+                    <div class="prog-title" onclick="document.getElementById('nx-${i}').classList.toggle('visible')">
+                        <span class="live-dot"></span>${now.title}
+                    </div>
+                    <div style="font-size:0.9rem">${now.startTime}</div>
+                    <div id="nx-${i}" class="next-list">
+                        ${future.map(f => `<div class="next-item"><span class="next-time">${f.startTime}</span><span>${f.title}</span></div>`).join('')}
+                    </div>`;
                 container.appendChild(div);
             });
-        } catch (e) {
-            document.getElementById('guide').innerText = "Erreur de synchro.";
-        }
+        } catch (e) { document.getElementById('guide').innerText = "Vérifiez l'Action GitHub..."; }
     }
     init();
 </script>
