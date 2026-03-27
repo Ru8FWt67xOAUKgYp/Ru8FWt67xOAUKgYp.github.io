@@ -5,78 +5,82 @@ import sys
 def fetch_gas_prices():
     url = "https://www.gasbuddy.com/graphql"
     
-    # GasBuddy now requires a real-looking User-Agent header
+    # Precise headers to mimic a real browser session
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "Content-Type": "application/json",
+        "Accept": "application/json",
     }
     
-    query = """
-    query LocationBySearchTerm($search: String, $fuel: Int) {
-      locationBySearchTerm(search: $search) {
-        stations(fuel: $fuel) {
-          results {
-            name
-            address {
-              line1
-            }
-            prices {
-              fuelProduct
-              credit {
-                price
-                postedTime
+    # Updated query structure for 2026
+    payload = {
+        "operationName": "LocationBySearchTerm",
+        "variables": {
+            "search": "H3W 1X4",
+            "fuel": 1 # 1 = Regular
+        },
+        "query": """query LocationBySearchTerm($search: String, $fuel: Int) {
+          locationBySearchTerm(search: $search) {
+            stations(fuel: $fuel) {
+              results {
+                name
+                address {
+                  line1
+                }
+                prices {
+                  fuelProduct
+                  credit {
+                    price
+                    postedTime
+                  }
+                }
               }
             }
           }
-        }
-      }
-    }
-    """
-    
-    variables = {
-        "search": "H3W 1X4",
-        "fuel": 1  # 1 = Regular
+        }"""
     }
 
     try:
-        response = requests.post(url, json={'query': query, 'variables': variables}, headers=headers, timeout=15)
-        response.raise_for_status()
+        response = requests.post(url, json=payload, headers=headers, timeout=15)
+        
+        # If we get a 400, print the server's reason to the GitHub logs
+        if response.status_code != 200:
+            print(f"Server returned {response.status_code}: {response.text}")
+            sys.exit(1)
+
         data = response.json()
         
-        # Guard against empty data structure
-        if not data.get('data') or not data['data'].get('locationBySearchTerm'):
-            print("Error: GasBuddy returned no data for this postal code.")
+        # Extract stations safely
+        stations = data.get('data', {}).get('locationBySearchTerm', {}).get('stations', {}).get('results', [])
+        
+        if not stations:
+            print("No stations found. GasBuddy might have changed their field names.")
             sys.exit(1)
 
-        stations = data['data']['locationBySearchTerm']['stations']['results']
-        
         results = []
         for s in stations:
-            # Filter for regular gas and valid prices
+            # Look for regular fuel prices specifically
             reg_prices = [p for p in s.get('prices', []) if p.get('fuelProduct') == 'regular']
             if reg_prices:
-                price_val = reg_prices[0].get('credit', {}).get('price')
-                if price_val and price_val > 0:
+                p_info = reg_prices[0].get('credit', {})
+                if p_info.get('price', 0) > 0:
                     results.append({
                         "name": s.get('name', 'Unknown'),
-                        "address": s.get('address', {}).get('line1', 'No Address'),
-                        "price": price_val,
-                        "updated": reg_prices[0]['credit'].get('postedTime')
+                        "address": s.get('address', {}).get('line1', 'Unknown Address'),
+                        "price": p_info['price'],
+                        "updated": p_info.get('postedTime')
                     })
-        
-        if not results:
-            print("No valid prices found in the results.")
-            sys.exit(1)
 
-        # Sort and Save
+        # Sort by price and take top 20
         top_20 = sorted(results, key=lambda x: x['price'])[:20]
+        
         with open('gas_prices.json', 'w') as f:
             json.dump(top_20, f, indent=4)
         
-        print(f"Success! Found {len(top_20)} stations.")
+        print(f"Success! Saved {len(top_20)} stations to gas_prices.json")
 
     except Exception as e:
-        print(f"CRITICAL ERROR: {e}")
+        print(f"Script failed: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
