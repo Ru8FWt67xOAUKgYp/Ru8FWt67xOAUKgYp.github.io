@@ -1,4 +1,4 @@
-name: Update TV Listings (Resilient)
+name: Update TV Listings (Direct Raw)
 
 on:
   schedule:
@@ -22,10 +22,10 @@ jobs:
           import json
           from datetime import datetime
 
-          # Primary and Fallback URLs for Montreal EPG
+          # Direct raw paths are less likely to 404 than the github.io mirrors
           URLS = [
-              "https://iptv-org.github.io/epg/guides/ca/tvtv.ca.epg.xml",
-              "https://raw.githubusercontent.com/iptv-org/epg/master/guides/ca/tvtv.ca.epg.xml"
+              "https://raw.githubusercontent.com/iptv-org/epg/master/guides/ca/tvtv.ca.epg.xml",
+              "https://iptv-org.github.io/epg/guides/ca/tvtv.ca.epg.xml"
           ]
           
           FAV_CHANNELS = {
@@ -41,25 +41,26 @@ jobs:
           def fetch_xml():
               for url in URLS:
                   try:
-                      print(f"Trying {url}...")
+                      print(f"Connecting to {url}...")
                       req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
                       with urllib.request.urlopen(req, timeout=30) as response:
                           return ET.parse(response).getroot()
                   except Exception as e:
-                      print(f"Failed to fetch from {url}: {e}")
+                      print(f"Failed: {e}")
               return None
 
           root = fetch_xml()
           if root is None:
-              print("All sources failed.")
+              print("All sources failed. GitHub might be throttling or the file was moved.")
               exit(1)
 
           output_channels = []
           for ch_id, display_name in FAV_CHANNELS.items():
               ch_obj = {"listName": display_name, "callSign": ch_id.split('.')[0], "listings": []}
+              # Find programs for this channel
               for prog in root.findall(f"programme[@channel='{ch_id}']"):
-                  raw_start = prog.get('start').split(' ')[0]
-                  dt = datetime.strptime(raw_start, '%Y%m%d%H%M%S')
+                  start_str = prog.get('start').split(' ')[0]
+                  dt = datetime.strptime(start_str, '%Y%m%d%H%M%S')
                   ch_obj["listings"].append({
                       "title": prog.find('title').text,
                       "startTime": dt.strftime('%H:%M')
@@ -69,10 +70,11 @@ jobs:
                   ch_obj["listings"].sort(key=lambda x: x['startTime'])
                   output_channels.append(ch_obj)
 
+          # Use Montreal time for the stamp
           now_mtl = datetime.now().strftime('%Y-%m-%d %H:%M')
           with open('tele.json', 'w', encoding='utf-8') as f:
               json.dump({"lastUpdated": now_mtl, "channels": output_channels}, f, ensure_ascii=False, indent=2)
-          print("Success!")
+          print("Success: tele.json updated.")
           EOF
 
       - name: Commit and Push
@@ -80,4 +82,4 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add tele.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update TV Grid" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Fix 404 with direct raw source" && git push)
