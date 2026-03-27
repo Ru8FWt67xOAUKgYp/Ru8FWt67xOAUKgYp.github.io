@@ -17,72 +17,91 @@ jobs:
           node <<EOF
           const fs = require('fs');
           
-          // Using a different, usually more populated mirror
-          const EPG_URL = "https://iptv-org.github.io/epg/guides/ca/dstv.com.epg.xml";
-          const FAVS = ["CBFT", "CIVM", "CFTM", "CFJP", "CBMT", "LCN", "SERIES"];
+          // Fallback URLs in case one is 404
+          const URLS = [
+            "https://iptv-org.github.io/epg/guides/ca/tvtv.ca.epg.xml",
+            "https://iptv-org.github.io/epg/guides/ca/dstv.com.epg.xml"
+          ];
 
           async function start() {
-            try {
-              console.log("Fetching EPG...");
-              const res = await fetch(EPG_URL);
-              const xml = await res.text();
-              
-              const channelsMap = {};
-              // 1. Find channels by ID or Name
-              const chRegex = /<channel id="([^"]+)">\s*<display-name[^>]*>([^<]+)<\/display-name>/g;
-              let m;
-              while ((m = chRegex.exec(xml)) !== null) {
-                const id = m[1];
-                const name = m[2];
-                if (FAVS.some(f => id.toUpperCase().includes(f) || name.toUpperCase().includes(f))) {
-                  channelsMap[id] = { name: name, listings: [] };
+            let xml = "";
+            for (const url of URLS) {
+              try {
+                console.log("Trying: " + url);
+                const res = await fetch(url);
+                if (res.ok) {
+                  xml = await res.text();
+                  if (xml.length > 1000) break; 
                 }
-              }
+              } catch (e) { console.log("Failed " + url); }
+            }
 
-              console.log("Matched IDs:", Object.keys(channelsMap));
-
-              // 2. Extract Programs
-              const pRegex = /<programme start="(\d{8})(\d{4})[^"]+" channel="([^"]+)">\s*<title[^>]*>([^<]+)<\/title>/g;
-              let pm;
-              while ((pm = pRegex.exec(xml)) !== null) {
-                const startDay = pm[1];
-                const startTime = pm[2];
-                const chId = pm[3];
-                const title = pm[4].replace(/&/g, '&');
-
-                if (channelsMap[chId]) {
-                  channelsMap[chId].listings.push({
-                    startTime: startTime.substring(0,2) + ":" + startTime.substring(2,4),
-                    title: title,
-                    sort: startDay + startTime
-                  });
-                }
-              }
-
-              const final = Object.values(channelsMap)
-                .filter(c => c.listings.length > 0)
-                .map(c => {
-                  c.listings.sort((a,b) => a.sort.localeCompare(b.sort));
-                  return { name: c.name, listings: c.listings.slice(0,12) };
-                });
-
-              fs.writeFileSync('tele.json', JSON.stringify({
-                lastUpdated: new Date().toLocaleString("fr-CA", {timeZone: "America/Montreal"}),
-                channels: final
-              }, null, 2));
-              
-              console.log("Finished! Channels found:", final.length);
-            } catch (e) {
-              console.error(e);
+            if (!xml) {
+              console.error("No XML data found at any URL.");
               process.exit(1);
             }
+
+            const targets = [
+              {reg: /Radio-Canada/i, name: "Radio-Canada"},
+              {reg: /Tele-Quebec/i, name: "Télé-Québec"},
+              {reg: /TVA/i, name: "TVA"},
+              {reg: /Noovo/i, name: "Noovo"},
+              {reg: /CBC/i, name: "CBC MTL"},
+              {reg: /LCN/i, name: "LCN"},
+              {reg: /Series/i, name: "Séries Plus"}
+            ];
+
+            const channelsMap = {};
+            // Match channels
+            const chMatch = xml.matchAll(/<channel id="([^"]+)">\s*<display-name[^>]*>([^<]+)<\/display-name>/gi);
+            for (const m of chMatch) {
+              const id = m[1];
+              const displayName = m[2];
+              const match = targets.find(t => t.reg.test(displayName) || t.reg.test(id));
+              if (match) {
+                channelsMap[id] = { name: match.name, listings: [] };
+              }
+            }
+
+            console.log("Matched IDs: ", Object.keys(channelsMap));
+
+            // Match programs
+            const progMatch = xml.matchAll(/<programme start="(\d{8})(\d{4})[^"]+" channel="([^"]+)">\s*<title[^>]*>([^<]+)<\/title>/gi);
+            for (const pm of progMatch) {
+              const chId = pm[3];
+              if (channelsMap[chId]) {
+                const time = pm[2];
+                channelsMap[chId].listings.push({
+                  startTime: time.substring(0,2) + ":" + time.substring(2,4),
+                  title: pm[4].replace(/&/g, '&'),
+                  sort: pm[1] + pm[2]
+                });
+              }
+            }
+
+            // Clean up and limit to 12 shows
+            const finalChannels = Object.values(channelsMap)
+              .filter(c => c.listings.length > 0)
+              .map(c => {
+                c.listings.sort((a,b) => a.sort.localeCompare(b.sort));
+                // Remove duplicates and filter for current/future (simple slice for now)
+                return { name: c.name, listings: c.listings.slice(0, 12) };
+              });
+
+            const output = {
+              lastUpdated: new Date().toLocaleString("fr-CA", {timeZone: "America/Montreal"}),
+              channels: finalChannels
+            };
+
+            fs.writeFileSync('tele.json', JSON.stringify(output, null, 2));
+            console.log("Success! Channels with data: " + finalChannels.length);
           }
           start();
           EOF
       - name: Deploy
         run: |
-          git config --global user.name "bot"
-          git config --global user.email "bot"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add tele.json
-          git commit -m "Switch source to DSTV mirror" || exit 0
+          git commit -m "Refreshed EPG Data" || exit 0
           git push
