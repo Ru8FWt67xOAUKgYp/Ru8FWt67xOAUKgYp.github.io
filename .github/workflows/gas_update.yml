@@ -1,27 +1,41 @@
- 
 name: Update Gas Prices
+
 on:
   schedule:
-    - cron: '0 */4 * * *' # Every 4 hours
-  workflow_dispatch: # Allows manual run
+    # Runs every 4 hours (UTC)
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+    # Adds a manual "Run workflow" button in the GitHub Actions tab
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    
+    # Permissions needed to commit the JSON file back to the repo
+    permissions:
+      contents: write
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Install dependencies
-        run: pip install py-gasbuddy
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
       - name: Run Update Script
         run: python update_gas.py
-      - name: Commit and Push
+
+      - name: Commit and Push Changes
         run: |
           git config --global user.name "GasBot"
           git config --global user.email "actions@github.com"
           git add gas_prices.json
-          git commit -m "Update gas prices for H3W 1X4" || exit 0
-          git push
+          # Only commit if there are actually changes to the prices
+          git diff-index --quiet HEAD || (git commit -m "Update gas prices for H3W 1X4" && git push)
