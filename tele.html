@@ -2,56 +2,206 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>TV MTL Pro</title>
     <style>
-        :root { --bg: #000; --card: #1c1c1e; --text: #f2f2f7; --accent: #007aff; --live: #ff3b30; }
-        body { font-family: sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 10px; }
+        :root { 
+            --bg: #000000; 
+            --card: #1c1c1e; 
+            --text: #f2f2f7; 
+            --accent: #007aff; 
+            --live: #ff3b30; 
+            --border: #2c2c2e;
+        }
+
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            background: var(--bg); 
+            color: var(--text); 
+            margin: 0; 
+            padding: 10px;
+            -webkit-tap-highlight-color: transparent;
+        }
+
         .container { max-width: 500px; margin: auto; }
-        .card { background: var(--card); border-radius: 14px; padding: 15px; margin-bottom: 12px; border: 1px solid #38383a; }
-        .ch-row { display: flex; justify-content: space-between; font-size: 11px; font-weight: 800; color: #8e8e93; text-transform: uppercase; }
-        .prog-title { font-size: 1.2rem; font-weight: 700; margin: 6px 0; color: var(--accent); cursor: pointer; display: flex; align-items: center; gap: 8px; }
-        .live-dot { width: 8px; height: 8px; background: var(--live); border-radius: 50%; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
-        .next-list { margin-top: 10px; border-top: 1px solid #38383a; padding-top: 10px; display: none; }
-        .visible { display: block; }
-        .next-item { display: flex; gap: 12px; font-size: 0.9rem; padding: 8px 0; border-bottom: 1px solid #222; }
-        .next-time { color: var(--accent); font-weight: 700; min-width: 50px; }
-        footer { text-align: center; font-size: 11px; color: #444; padding: 20px 0; }
+        
+        .header { 
+            position: sticky; 
+            top: 0; 
+            background: var(--bg); 
+            z-index: 100; 
+            padding: 10px 0 15px 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 15px;
+        }
+
+        .search { 
+            width: 100%; 
+            padding: 12px 15px; 
+            border-radius: 12px; 
+            border: none; 
+            background: var(--card); 
+            color: var(--text); 
+            font-size: 16px; /* Prevents zoom on focus */
+            outline: none;
+            box-sizing: border-box;
+        }
+
+        .card { 
+            background: var(--card); 
+            border-radius: 14px; 
+            padding: 15px; 
+            margin-bottom: 12px; 
+            border: 1px solid var(--border);
+        }
+
+        .ch-row { 
+            display: flex; 
+            justify-content: space-between; 
+            font-size: 11px; 
+            font-weight: 800; 
+            color: #8e8e93; 
+            text-transform: uppercase; 
+            letter-spacing: 0.5px;
+        }
+
+        .prog-title { 
+            font-size: 1.2rem; 
+            font-weight: 700; 
+            margin: 6px 0; 
+            color: var(--accent);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--live);
+            border-radius: 50%;
+            display: inline-block;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.3; }
+            100% { opacity: 1; }
+        }
+
+        .prog-time { font-size: 0.95rem; font-weight: 500; opacity: 0.8; }
+
+        .next-list { 
+            margin-top: 12px; 
+            border-top: 1px solid var(--border); 
+            padding-top: 10px; 
+            display: none; 
+        }
+        
+        .next-list.visible { display: block; }
+
+        .next-item { 
+            display: flex; 
+            gap: 12px; 
+            font-size: 0.9rem; 
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .next-time { color: var(--accent); font-weight: 700; min-width: 55px; }
+
+        footer { text-align: center; font-size: 11px; color: #444; padding: 30px 0; }
+        
+        .status-msg { text-align: center; padding: 40px; color: #8e8e93; }
     </style>
 </head>
 <body>
+
 <div class="container">
-    <div id="guide">Chargement...</div>
-    <footer>Dernière synchro : <span id="sync-time">...</span></footer>
+    <div class="header">
+        <input type="text" id="searchInput" class="search" placeholder="Rechercher une émission..." onkeyup="handleSearch()">
+    </div>
+
+    <div id="guide">
+        <div class="status-msg">Chargement des données...</div>
+    </div>
+    
+    <footer>
+        Dernière mise à jour : <span id="sync-time">...</span>
+    </footer>
 </div>
+
 <script>
+    let fullData = [];
+
     async function init() {
         try {
+            // Fetch the tele.json generated by GitHub Action
             const res = await fetch('./tele.json?v=' + Date.now());
+            if (!res.ok) throw new Error("Fichier introuvable");
+            
             const data = await res.json();
             document.getElementById('sync-time').innerText = data.lastUpdated;
-            const container = document.getElementById('guide');
-            container.innerHTML = "";
-
-            data.channels.forEach((ch, i) => {
-                const now = ch.listings[0] || {title: "Info indisponible", startTime: "--:--"};
-                const future = ch.listings.slice(1, 8);
-                const div = document.createElement('div');
-                div.className = 'card';
-                div.innerHTML = `
-                    <div class="ch-row"><span>${ch.name}</span></div>
-                    <div class="prog-title" onclick="document.getElementById('nx-${i}').classList.toggle('visible')">
-                        <span class="live-dot"></span>${now.title}
-                    </div>
-                    <div style="font-size:0.9rem">${now.startTime}</div>
-                    <div id="nx-${i}" class="next-list">
-                        ${future.map(f => `<div class="next-item"><span class="next-time">${f.startTime}</span><span>${f.title}</span></div>`).join('')}
-                    </div>`;
-                container.appendChild(div);
-            });
-        } catch (e) { document.getElementById('guide').innerText = "Vérifiez l'Action GitHub..."; }
+            fullData = data.channels;
+            render(fullData);
+        } catch (e) {
+            document.getElementById('guide').innerHTML = `
+                <div class="status-msg">
+                    Données indisponibles.<br><small>Attendez que l'Action GitHub se termine.</small>
+                </div>`;
+        }
     }
+
+    function render(list) {
+        const container = document.getElementById('guide');
+        if (!list || list.length === 0) {
+            container.innerHTML = "<div class='status-msg'>Aucun résultat trouvé.</div>";
+            return;
+        }
+
+        container.innerHTML = "";
+        list.forEach((ch, i) => {
+            const now = ch.listings[0] || { title: "Fin des émissions", startTime: "--:--" };
+            const future = ch.listings.slice(1, 10);
+            
+            const div = document.createElement('div');
+            div.className = 'card';
+            div.innerHTML = `
+                <div class="ch-row"><span>${ch.name}</span></div>
+                <div class="prog-title" onclick="toggleSched(${i})">
+                    <span class="live-dot"></span>${now.title}
+                </div>
+                <div class="prog-time">En cours : ${now.startTime}</div>
+                <div id="nx-${i}" class="next-list">
+                    ${future.map(f => `
+                        <div class="next-item">
+                            <span class="next-time">${f.startTime}</span>
+                            <span>${f.title}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    function handleSearch() {
+        const q = document.getElementById('searchInput').value.toLowerCase();
+        const filtered = fullData.filter(c => 
+            c.name.toLowerCase().includes(q) || 
+            c.listings.some(l => l.title.toLowerCase().includes(q))
+        );
+        render(filtered);
+    }
+
+    function toggleSched(id) {
+        const el = document.getElementById(`nx-${id}`);
+        el.classList.toggle('visible');
+    }
+
+    // Auto-init on load
     init();
 </script>
 </body>
