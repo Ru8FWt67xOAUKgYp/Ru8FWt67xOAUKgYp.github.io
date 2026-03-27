@@ -16,37 +16,57 @@ jobs:
         run: |
           node <<EOF
           const fs = require('fs');
-          const FAVS = ["CBFT.ca", "CIVM.ca", "CFTM.ca", "CFJP.ca", "CBMT.ca", "LCN.ca", "SERIESPLUS.ca"];
+          const FAVS = [
+            {id: "CBFT.ca", name: "Radio-Canada"},
+            {id: "CIVM.ca", name: "Télé-Québec"},
+            {id: "CFTM.ca", name: "TVA"},
+            {id: "CFJP.ca", name: "Noovo"},
+            {id: "CBMT.ca", name: "CBC MTL"},
+            {id: "LCN.ca", name: "LCN"},
+            {id: "SERIESPLUS.ca", name: "Séries Plus"}
+          ];
 
           async function start() {
             try {
-              // Fetching a stable XML guide directly
+              console.log("Fetching XML...");
               const res = await fetch("https://iptv-org.github.io/epg/guides/ca/tvtv.ca.epg.xml");
-              const xmlText = await res.text();
+              const xml = await res.text();
               
               const channels = [];
               
-              // Simple regex parsing to stay lightweight and avoid extra dependencies
-              FAVS.forEach(id => {
-                const callSign = id.split('.')[0];
+              FAVS.forEach(fav => {
                 const listings = [];
+                // Split the XML into chunks for this specific channel
+                const chunks = xml.split(\`channel="\${fav.id}"\`);
                 
-                // Find programs for this channel
-                const progRegex = new RegExp('<programme start="(\\\\d{12})[^"]+" channel="' + id + '">\\\\s*<title[^>]*>([^<]+)</title>', 'g');
-                let match;
-                while ((match = progRegex.exec(xmlText)) !== null) {
-                    const rawTime = match[1]; // YYYYMMDDHHMM
+                // Skip the first chunk (it's headers), look at the rest
+                for (let i = 1; i < chunks.length; i++) {
+                  const chunk = chunks[i];
+                  if (!chunk.includes('<title')) continue;
+
+                  // Extract Start Time (Format: start="20260327013000")
+                  const timeMatch = chunk.match(/start="(\\d{8})(\\d{4})/);
+                  // Extract Title
+                  const titleMatch = chunk.match(/<title[^>]*>([^<]+)<\\/title>/);
+
+                  if (timeMatch && titleMatch) {
+                    const time = timeMatch[2]; // HHMM
                     listings.push({
-                        title: match[2],
-                        startTime: \`\${rawTime.substring(8,10)}:\${rawTime.substring(10,12)}\`
+                      startTime: \`\${time.substring(0,2)}:\${time.substring(2,4)}\`,
+                      title: titleMatch[1].replace(/&/g, '&'),
+                      raw: timeMatch[1] // For sorting
                     });
+                  }
                 }
 
                 if (listings.length > 0) {
-                    channels.push({
-                        name: callSign,
-                        listings: listings.slice(0, 15) // Keep next 15 shows
-                    });
+                  // Sort by date/time and filter for upcoming shows
+                  listings.sort((a, b) => a.raw.localeCompare(b.raw));
+                  channels.push({
+                    name: fav.name,
+                    id: fav.id,
+                    listings: listings.slice(0, 12)
+                  });
                 }
               });
 
@@ -56,7 +76,7 @@ jobs:
               };
 
               fs.writeFileSync('tele.json', JSON.stringify(output, null, 2));
-              console.log("Success: Data parsed.");
+              console.log(\`Success: Parsed \${channels.length} channels.\`);
             } catch (e) {
               console.error(e);
               process.exit(1);
@@ -69,5 +89,5 @@ jobs:
           git config --global user.name "bot"
           git config --global user.email "bot"
           git add tele.json
-          git commit -m "Update Guide Data" || exit 0
+          git commit -m "Fix parsing logic" || exit 0
           git push
