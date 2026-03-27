@@ -17,61 +17,61 @@ jobs:
           node <<EOF
           const fs = require('fs');
           
-          // These are the "Keywords" we are looking for in the XML
-          const KEYWORDS = ["Radio-Canada", "Télé-Québec", "TVA", "Noovo", "CBC", "LCN", "Séries Plus"];
+          // Using a different, usually more populated mirror
+          const EPG_URL = "https://iptv-org.github.io/epg/guides/ca/dstv.com.epg.xml";
+          const FAVS = ["CBFT", "CIVM", "CFTM", "CFJP", "CBMT", "LCN", "SERIES"];
 
           async function start() {
             try {
-              console.log("Fetching XML...");
-              const res = await fetch("https://iptv-org.github.io/epg/guides/ca/tvtv.ca.epg.xml");
+              console.log("Fetching EPG...");
+              const res = await fetch(EPG_URL);
               const xml = await res.text();
               
               const channelsMap = {};
-
-              // 1. First, find ALL channel definitions to get their IDs
-              const channelRegex = /<channel id="([^"]+)">\\s*<display-name[^>]*>([^<]+)<\\/display-name>/g;
-              let chMatch;
-              while ((chMatch = channelRegex.exec(xml)) !== null) {
-                const id = chMatch[1];
-                const name = chMatch[2];
-                if (KEYWORDS.some(k => name.includes(k))) {
+              // 1. Find channels by ID or Name
+              const chRegex = /<channel id="([^"]+)">\s*<display-name[^>]*>([^<]+)<\/display-name>/g;
+              let m;
+              while ((m = chRegex.exec(xml)) !== null) {
+                const id = m[1];
+                const name = m[2];
+                if (FAVS.some(f => id.toUpperCase().includes(f) || name.toUpperCase().includes(f))) {
                   channelsMap[id] = { name: name, listings: [] };
                 }
               }
 
-              const foundIds = Object.keys(channelsMap);
-              console.log("Found IDs:", foundIds);
+              console.log("Matched IDs:", Object.keys(channelsMap));
 
-              // 2. Scan the file for programmes belonging to these IDs
-              const progRegex = /<programme start="(\\d{8})(\\d{4})[^"]+" channel="([^"]+)">\\s*<title[^>]*>([^<]+)<\\/title>/g;
-              let pMatch;
-              while ((pMatch = progRegex.exec(xml)) !== null) {
-                const channelId = pMatch[3];
-                if (channelsMap[channelId]) {
-                  const time = pMatch[2];
-                  channelsMap[channelId].listings.push({
-                    startTime: \`\${time.substring(0,2)}:\${time.substring(2,4)}\`,
-                    title: pMatch[4].replace(/&/g, '&'),
-                    raw: pMatch[1] + pMatch[2]
+              // 2. Extract Programs
+              const pRegex = /<programme start="(\d{8})(\d{4})[^"]+" channel="([^"]+)">\s*<title[^>]*>([^<]+)<\/title>/g;
+              let pm;
+              while ((pm = pRegex.exec(xml)) !== null) {
+                const startDay = pm[1];
+                const startTime = pm[2];
+                const chId = pm[3];
+                const title = pm[4].replace(/&/g, '&');
+
+                if (channelsMap[chId]) {
+                  channelsMap[chId].listings.push({
+                    startTime: startTime.substring(0,2) + ":" + startTime.substring(2,4),
+                    title: title,
+                    sort: startDay + startTime
                   });
                 }
               }
 
-              // 3. Clean up and format
-              const finalChannels = Object.values(channelsMap)
+              const final = Object.values(channelsMap)
                 .filter(c => c.listings.length > 0)
                 .map(c => {
-                  c.listings.sort((a, b) => a.raw.localeCompare(b.raw));
-                  return { name: c.name, listings: c.listings.slice(0, 10) };
+                  c.listings.sort((a,b) => a.sort.localeCompare(b.sort));
+                  return { name: c.name, listings: c.listings.slice(0,12) };
                 });
 
-              const output = {
+              fs.writeFileSync('tele.json', JSON.stringify({
                 lastUpdated: new Date().toLocaleString("fr-CA", {timeZone: "America/Montreal"}),
-                channels: finalChannels
-              };
-
-              fs.writeFileSync('tele.json', JSON.stringify(output, null, 2));
-              console.log(\`Final count: \${finalChannels.length} channels.\`);
+                channels: final
+              }, null, 2));
+              
+              console.log("Finished! Channels found:", final.length);
             } catch (e) {
               console.error(e);
               process.exit(1);
@@ -84,5 +84,5 @@ jobs:
           git config --global user.name "bot"
           git config --global user.email "bot"
           git add tele.json
-          git commit -m "Dynamic keyword sync" || exit 0
+          git commit -m "Switch source to DSTV mirror" || exit 0
           git push
