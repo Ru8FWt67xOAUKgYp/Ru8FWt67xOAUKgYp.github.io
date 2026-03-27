@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Montreal Gas Dashboard</title>
+    <style>
+        :root {
+            --bg: #ffffff;
+            --card-bg: #f4f4f9;
+            --text: #1a1a1a;
+            --accent: #d32f2f;
+            --subtext: #666666;
+            --border: #dddddd;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #121212;
+                --card-bg: #1e1e1e;
+                --text: #e0e0e0;
+                --accent: #ff5252;
+                --subtext: #aaaaaa;
+                --border: #333333;
+            }
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container { width: 100%; max-width: 450px; }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+
+        h1 { font-size: 1.2rem; margin: 0; }
+        
+        #refresh-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+
+        .station-card {
+            background: var(--card-bg);
+            padding: 15px;
+            margin-bottom: 12px;
+            border-radius: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .details { flex: 1; }
+        .station-name { font-weight: bold; display: block; margin-bottom: 4px; }
+        .map-link { font-size: 0.85rem; color: var(--accent); text-decoration: none; }
+        .price { font-size: 1.3rem; font-weight: 800; color: var(--accent); }
+        .updated { font-size: 0.7rem; color: var(--subtext); display: block; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <div>
+            <h1>Gas (H3W 1X4)</h1>
+            <span id="update-time" style="font-size: 0.7rem; color: var(--subtext);">Checking...</span>
+        </div>
+        <button id="refresh-btn" onclick="loadGas()">Refresh View</button>
+    </header>
+
+    <div id="gas-list">Loading data...</div>
+</div>
+
+<script>
+    async function loadGas() {
+        const list = document.getElementById('gas-list');
+        const timeDisplay = document.getElementById('update-time');
+        
+        try {
+            // Append a timestamp to the URL to prevent browser caching
+            const response = await fetch(`gas_prices.json?t=${new Date().getTime()}`);
+            if (!response.ok) throw new Error();
+            
+            const data = await response.json();
+            let html = '';
+            
+            data.forEach(s => {
+                const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.name + ' ' + s.address)}`;
+                html += `
+                    <div class="station-card">
+                        <div class="details">
+                            <span class="station-name">${s.name}</span>
+                            <a href="${mapUrl}" target="_blank" class="map-link">📍 ${s.address}</a>
+                        </div>
+                        <div style="text-align: right;">
+                            <div class="price">${s.price}¢</div>
+                            <span class="updated">Regular</span>
+                        </div>
+                    </div>`;
+            });
+
+            list.innerHTML = html;
+            timeDisplay.innerText = "Last checked: " + new Date().toLocaleTimeString();
+        } catch (e) {
+            list.innerHTML = "<div style='text-align:center; padding-top:20px; color:var(--subtext);'>Data not found. Wait for the first GitHub Action to finish.</div>";
+        }
+    }
+
+    loadGas();
+</script>
+
+</body>
+</html>
