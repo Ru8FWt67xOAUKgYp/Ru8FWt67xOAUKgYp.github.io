@@ -1,22 +1,30 @@
-import requests
 import json
 import sys
+# You MUST add 'curl_cffi' to your .yml dependencies (see below)
+from curl_cffi import requests 
 
 def fetch_gas_prices():
     url = "https://www.gasbuddy.com/graphql"
     
-    # Precise headers are critical for GitHub Actions
+    # We use 'impersonate' to mimic a real Chrome browser's TLS fingerprint
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "Origin": "https://www.gasbuddy.com",
-        "Referer": "https://www.gasbuddy.com/home?search=H3W%201X4&fuel=1"
+        "accept": "application/json",
+        "content-type": "application/json",
+        "origin": "https://www.gasbuddy.com",
+        "referer": "https://www.gasbuddy.com/",
     }
     
-    # 2026 Schema requires all variables to be explicitly passed
     payload = {
         "operationName": "LocationBySearchTerm",
+        "variables": {
+            "search": "H3W 1X4",
+            "fuel": 1,
+            "maxAge": 0,
+            "brandId": None,
+            "cursor": None,
+            "lat": 45.4925, # Added Montreal coords to help the search
+            "lng": -73.6331
+        },
         "query": """query LocationBySearchTerm($brandId: Int, $cursor: String, $fuel: Int, $lat: Float, $lng: Float, $maxAge: Int, $search: String) {
           locationBySearchTerm(lat: $lat, lng: $lng, search: $search) {
             stations(brandId: $brandId, cursor: $cursor, fuel: $fuel, maxAge: $maxAge) {
@@ -33,55 +41,43 @@ def fetch_gas_prices():
               }
             }
           }
-        }""",
-        "variables": {
-            "search": "H3W 1X4",
-            "fuel": 1,        # 1 = Regular
-            "maxAge": 0,      # 0 = Any age (freshest)
-            "brandId": None,
-            "cursor": None,
-            "lat": None,
-            "lng": None
-        }
+        }"""
     }
 
     try:
-        response = requests.post(url, json=payload, headers=headers, timeout=20)
+        # 'impersonate="chrome"' is the magic fix for 400/403 errors
+        response = requests.post(url, json=payload, headers=headers, impersonate="chrome", timeout=30)
         
         if response.status_code != 200:
-            print(f"Server Error {response.status_code}: {response.text}")
+            print(f"Handshake failed ({response.status_code}). Server response: {response.text[:200]}")
             sys.exit(1)
 
         data = response.json()
         stations = data.get('data', {}).get('locationBySearchTerm', {}).get('stations', {}).get('results', [])
         
-        if not stations:
-            print("Response received but no stations found. The query might need a larger radius or different ZIP.")
-            sys.exit(1)
-
         results = []
         for s in stations:
-            # Filter for regular fuel prices specifically
             reg_prices = [p for p in s.get('prices', []) if p.get('fuelProduct') == 'regular']
             if reg_prices:
-                p_info = reg_prices[0].get('credit', {})
-                if p_info.get('price', 0) > 0:
+                price_data = reg_prices[0].get('credit', {})
+                if price_data.get('price', 0) > 0:
                     results.append({
-                        "name": s.get('name', 'Gas Station'),
-                        "address": s.get('address', {}).get('line1', 'Address Private'),
-                        "price": p_info['price']
+                        "name": s.get('name', 'Station'),
+                        "address": s.get('address', {}).get('line1', 'Montreal, QC'),
+                        "price": price_data['price']
                     })
 
-        # Sort by price and save top 20
-        top_20 = sorted(results, key=lambda x: x['price'])[:20]
-        
+        if not results:
+            print("No prices found. The search returned 0 results.")
+            sys.exit(1)
+
         with open('gas_prices.json', 'w') as f:
-            json.dump(top_20, f, indent=4)
+            json.dump(sorted(results, key=lambda x: x['price'])[:20], f, indent=4)
         
-        print(f"Success! Captured {len(top_20)} stations.")
+        print(f"Success! {len(results)} stations found.")
 
     except Exception as e:
-        print(f"Script encountered a critical error: {e}")
+        print(f"Script Error: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
