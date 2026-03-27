@@ -17,15 +17,23 @@ jobs:
           node <<EOF
           const fs = require('fs');
           
-          // Using a direct community aggregator that is much more stable than the GitHub mirrors
-          const EPG_URL = "https://raw.githubusercontent.com/acidzebra/epg-config/master/guides/canada.xml";
+          // Using the "all-in-one" Canada source which is less likely to 404
+          const EPG_URL = "https://iptv-org.github.io/epg/guides/ca/canada.xml";
 
           async function start() {
             try {
-              console.log("Fetching stable EPG...");
+              console.log("Fetching: " + EPG_URL);
               const res = await fetch(EPG_URL);
-              if (!res.ok) throw new Error("Source down: " + res.status);
-              const xml = await res.text();
+              
+              if (!res.ok) {
+                // Emergency Fallback to the epgshare mirror if the main one is down
+                console.log("Primary failed, trying epgshare...");
+                const fallback = await fetch("https://raw.githubusercontent.com/acidzebra/epg-config/master/guides/canada.xml");
+                if (!fallback.ok) throw new Error("All EPG sources are 404.");
+                var xml = await fallback.text();
+              } else {
+                var xml = await res.text();
+              }
 
               const targets = [
                 {reg: /Radio-Canada/i, name: "Radio-Canada"},
@@ -38,7 +46,6 @@ jobs:
               ];
 
               const channelsMap = {};
-              // Match any channel ID that looks like our targets
               const chMatch = xml.matchAll(/<channel id="([^"]+)">\s*<display-name[^>]*>([^<]+)<\/display-name>/gi);
               for (const m of chMatch) {
                 const id = m[1];
@@ -53,12 +60,10 @@ jobs:
               for (const pm of progMatch) {
                 const chId = pm[3];
                 if (channelsMap[chId]) {
-                  const day = pm[1];
-                  const time = pm[2];
                   channelsMap[chId].listings.push({
-                    startTime: time.substring(0,2) + ":" + time.substring(2,4),
+                    startTime: pm[2].substring(0,2) + ":" + pm[2].substring(2,4),
                     title: pm[4].replace(/&/g, '&'),
-                    sort: day + time
+                    sort: pm[1] + pm[2]
                   });
                 }
               }
@@ -75,9 +80,9 @@ jobs:
                 channels: final
               }, null, 2));
               
-              console.log("Success! Channels found: " + final.length);
+              console.log("Success! Found " + final.length + " channels.");
             } catch (e) {
-              console.error("Action Failed:", e.message);
+              console.error(e.message);
               process.exit(1);
             }
           }
@@ -85,8 +90,8 @@ jobs:
           EOF
       - name: Deploy
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "bot"
+          git config --global user.email "bot"
           git add tele.json
-          git commit -m "Emergency EPG Fix" || exit 0
+          git commit -m "Fix 404 source" || exit 0
           git push
