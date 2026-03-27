@@ -10,33 +10,47 @@
         .container { max-width: 500px; margin: auto; }
         .header { position: sticky; top: 0; background: var(--bg); padding: 10px 0; border-bottom: 1px solid var(--border); margin-bottom: 15px; z-index: 10; }
         .search { width: 100%; padding: 12px; border-radius: 12px; border: none; background: var(--card); color: var(--text); font-size: 16px; box-sizing: border-box; outline: none; }
-        .card { background: var(--card); border-radius: 14px; padding: 15px; margin-bottom: 12px; border: 1px solid var(--border); }
+        .card { background: var(--card); border-radius: 14px; padding: 15px; margin-bottom: 12px; border: 1px solid var(--border); position: relative; }
         .ch-name { font-size: 11px; font-weight: 800; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
-        .prog-title { font-size: 1.2rem; font-weight: 700; color: var(--accent); cursor: pointer; display: flex; align-items: center; gap: 8px; }
+        .prog-title { font-size: 1.2rem; font-weight: 700; color: var(--accent); cursor: pointer; display: flex; align-items: center; gap: 8px; margin-right: 40px; }
         .live-dot { width: 8px; height: 8px; background: var(--live); border-radius: 50%; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         .prog-time { font-size: 0.9rem; opacity: 0.7; margin-top: 4px; }
         .next-list { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; display: none; }
-        .next-list.visible { display: block; }
+        .visible { display: block; }
         .next-item { display: flex; gap: 12px; font-size: 0.9rem; padding: 10px 0; border-bottom: 1px solid #222; }
         .next-time { color: var(--accent); font-weight: 700; min-width: 50px; }
+        
+        /* The Remote Style Button */
+        .remote-btn { 
+            position: absolute; right: 15px; top: 15px; 
+            background: #333; border-radius: 50%; width: 32px; height: 32px; 
+            display: flex; align-items: center; justify-content: center; 
+            text-decoration: none; font-size: 18px; color: white;
+        }
+
         footer { text-align: center; font-size: 11px; color: #444; padding: 30px 0; }
-        .btn { background: #333; color: #fff; border: none; padding: 8px 15px; border-radius: 8px; margin-top: 10px; font-size: 12px; }
     </style>
 </head>
 <body>
 <div class="container">
     <div class="header">
-        <input type="text" id="searchInput" class="search" placeholder="Filtrer..." onkeyup="handleSearch()">
+        <input type="text" id="searchInput" class="search" placeholder="Chercher émission..." onkeyup="handleSearch()">
     </div>
     <div id="guide"><div style="text-align:center;padding:50px;color:#666">Chargement...</div></div>
     <footer>
-        Synchro: <span id="sync-time">---</span><br>
-        <button class="btn" onclick="init()">Actualiser</button>
+        Dernière synchro: <span id="sync-time">---</span>
     </footer>
 </div>
 <script>
     let fullData = [];
+    const LINKS = {
+        "Radio-Canada": "https://ici.tou.tv/en-direct",
+        "TVA": "https://www.qub.ca/tvaplus/en-direct",
+        "Noovo": "https://www.noovo.ca/en-direct",
+        "Télé-Québec": "https://www.telequebec.tv/en-direct"
+    };
+
     async function init() {
         try {
             const res = await fetch('./tele.json?v=' + Date.now());
@@ -45,19 +59,23 @@
             fullData = data.channels;
             render(fullData);
         } catch (e) {
-            document.getElementById('guide').innerHTML = "<div style='text-align:center;padding:50px;color:#ff3b30'>Erreur de chargement.</div>";
+            document.getElementById('guide').innerHTML = "Erreur de données.";
         }
     }
+
     function render(list) {
         const container = document.getElementById('guide');
-        if (!list.length) { container.innerHTML = "<div style='text-align:center;padding:50px;color:#666'>Aucune donnée trouvée dans le JSON.</div>"; return; }
+        if (!list.length) { container.innerHTML = "Guide vide. Vérifiez l'Action GitHub."; return; }
         container.innerHTML = "";
         list.forEach((ch, i) => {
-            const now = ch.listings[0];
+            const now = ch.listings[0] || {title: "N/A", startTime: "--:--"};
             const future = ch.listings.slice(1, 8);
+            const streamUrl = LINKS[Object.keys(LINKS).find(k => ch.name.includes(k))] || "#";
+            
             const div = document.createElement('div');
             div.className = 'card';
             div.innerHTML = `
+                <a href="${streamUrl}" target="_blank" class="remote-btn">📺</a>
                 <div class="ch-name">${ch.name}</div>
                 <div class="prog-title" onclick="document.getElementById('nx-${i}').classList.toggle('visible')">
                     <span class="live-dot"></span>${now.title}
@@ -69,6 +87,7 @@
             container.appendChild(div);
         });
     }
+
     function handleSearch() {
         const q = document.getElementById('searchInput').value.toLowerCase();
         render(fullData.filter(c => c.name.toLowerCase().includes(q) || c.listings.some(l => l.title.toLowerCase().includes(q))));
