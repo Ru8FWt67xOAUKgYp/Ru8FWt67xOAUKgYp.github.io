@@ -1,4 +1,4 @@
-name: Update TV Listings (Direct Final)
+name: Update TV MTL
 
 on:
   schedule:
@@ -6,65 +6,50 @@ on:
   workflow_dispatch:
 
 jobs:
-  fetch:
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Fetch Data
+      - uses: actions/checkout@v4
+      - name: Generate Data
         run: |
           node <<EOF
           const fs = require('fs');
 
-          const FAVS = [
-            {id: 'CBFT', name: 'Radio-Canada'},
-            {id: 'CIVM', name: 'Télé-Québec'},
-            {id: 'CFTM', name: 'TVA'},
-            {id: 'CFJP', name: 'Noovo'},
-            {id: 'CBMT', name: 'CBC MTL'},
-            {id: 'LCN', name: 'LCN'},
-            {id: 'SERIES', name: 'Séries Plus'}
-          ];
+          // The exact IDs used by the global IPTV-org database for Montreal
+          const FAVS = ["CBFT.ca", "CIVM.ca", "CFTM.ca", "CFJP.ca", "CBMT.ca", "LCN.ca", "SERIESPLUS.ca"];
 
-          async function getEPG() {
-            // Using a high-availability Canadian data aggregator
-            const url = "https://api.allorigins.win/get?url=" + encodeURIComponent("https://www.tvtv.ca/api/grid?lineupId=CAN-0004264-X");
-            
+          async function start() {
             try {
-              const response = await fetch(url);
-              const data = await response.json();
-              const channels = JSON.parse(data.contents);
+              // Fetching from the official JS-ready mirror (no 404s here)
+              const res = await fetch("https://iptv-org.github.io/api/guides.json");
+              const allGuides = await res.json();
               
-              const filtered = channels.filter(c => 
-                FAVS.some(f => c.callSign.includes(f.id))
-              ).map(c => ({
-                listName: FAVS.find(f => c.callSign.includes(f.id)).name,
-                callSign: c.callSign,
-                channel: c.channel,
-                listings: c.listings.map(l => ({
-                  title: l.title,
-                  startTime: l.startTime,
-                  duration: l.duration
+              const myGuides = allGuides.filter(g => FAVS.includes(g.channel));
+              
+              const output = {
+                lastUpdated: new Date().toLocaleString("fr-CA", {timeZone: "America/Montreal"}),
+                channels: myGuides.map(g => ({
+                  name: g.channel.split('.')[0],
+                  url: g.url, // Link to the raw EPG if you ever need it
+                  site: g.site
                 }))
-              }));
+              };
 
-              const now = new Date().toLocaleString("en-CA", {timeZone: "America/Montreal", hour12: false});
-              fs.writeFileSync('tele.json', JSON.stringify({lastUpdated: now, channels: filtered}, null, 2));
-              console.log("Success! tele.json updated.");
+              fs.writeFileSync('tele.json', JSON.stringify(output, null, 2));
+              console.log("Success!");
             } catch (e) {
-              console.error("Critical Failure:", e.message);
+              console.error(e);
               process.exit(1);
             }
           }
-          getEPG();
+          start();
           EOF
-
-      - name: Commit and Push
+      - name: Deploy
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "bot"
+          git config --global user.email "bot"
           git add tele.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Direct source sync" && git push)
+          git commit -m "Update" || exit 0
+          git push
