@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>TV MTL Pro</title>
     <style>
-        :root { --accent: #007aff; --live: #ff3b30; --bg: #000; --card: #1c1c1e; --text: #f2f2f7; --border: #38383a; }
+        :root { --accent: #00a2ff; --live: #ff3b30; --bg: #000; --card: #1c1c1e; --text: #f2f2f7; --border: #38383a; }
         body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 10px; }
         .container { max-width: 500px; margin: auto; }
         .header { position: sticky; top: 0; background: var(--bg); z-index: 100; padding: 10px 0; border-bottom: 1px solid var(--border); margin-bottom: 15px; }
@@ -18,7 +18,7 @@
         .next-list { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; display: none; }
         .visible { display: block; }
         .next-item { display: flex; gap: 12px; font-size: 0.9rem; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
-        .next-time { color: var(--accent); font-weight: 700; min-width: 50px; }
+        .next-time { color: var(--accent); font-weight: 700; min-width: 55px; }
         footer { text-align: center; font-size: 11px; color: #8e8e93; padding: 20px 0; }
     </style>
 </head>
@@ -31,16 +31,26 @@
     <footer>Mise à jour : <span id="sync-time">...</span></footer>
 </div>
 <script>
+    const MY_FAVS = ['CBFT', 'CIVM', 'CFTM', 'CFJP', 'CBMT', 'LCN', 'SERIES'];
     let fullData = [];
+
     async function init() {
         try {
             const res = await fetch('./tele.json?v=' + Date.now());
             const data = await res.json();
             document.getElementById('sync-time').innerText = data.lastUpdated;
-            fullData = data.channels;
+            
+            // Filter only our favorites
+            fullData = data.channels.filter(c => 
+                MY_FAVS.some(f => (c.callSign||"").toUpperCase().includes(f))
+            ).sort((a,b) => 
+                MY_FAVS.findIndex(f => (a.callSign||"").includes(f)) - MY_FAVS.findIndex(f => (b.callSign||"").includes(f))
+            );
+
             render(fullData);
-        } catch (e) { document.getElementById('guide').innerText = "Vérifiez l'Action GitHub..."; }
+        } catch (e) { document.getElementById('guide').innerText = "Attente des données..."; }
     }
+
     function render(list) {
         const container = document.getElementById('guide');
         container.innerHTML = list.length ? "" : "Aucun résultat";
@@ -50,20 +60,25 @@
             const div = document.createElement('div');
             div.className = 'card';
             div.innerHTML = `
-                <div class="ch-row"><span>${ch.listName}</span><span>${ch.callSign}</span></div>
+                <div class="ch-row"><span>${ch.listName}</span><span>CH ${ch.channel}</span></div>
                 <div class="prog-title" onclick="document.getElementById('nx-${i}').classList.toggle('visible')">
                     <span class="live-dot"></span>${now.title}
                 </div>
-                <div style="font-size:0.9rem">${now.startTime}</div>
+                <div style="font-size:0.9rem">${now.startTime} (${now.duration}m)</div>
                 <div id="nx-${i}" class="next-list">
                     ${future.map(f => `<div class="next-item"><span class="next-time">${f.startTime}</span><span>${f.title}</span></div>`).join('')}
                 </div>`;
             container.appendChild(div);
         });
     }
+
     function handleSearch() {
         const q = document.getElementById('searchInput').value.toLowerCase();
-        render(fullData.filter(c => c.listName.toLowerCase().includes(q) || c.listings.some(l => l.title.toLowerCase().includes(q))));
+        const filtered = fullData.filter(c => 
+            c.listName.toLowerCase().includes(q) || 
+            c.listings.some(l => l.title.toLowerCase().includes(q))
+        );
+        render(filtered);
     }
     init();
 </script>
