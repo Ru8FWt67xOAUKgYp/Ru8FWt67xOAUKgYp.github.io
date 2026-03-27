@@ -1,4 +1,4 @@
-name: Update TV Listings (Direct Fetch)
+name: Update TV Listings (EPGShare)
 
 on:
   schedule:
@@ -14,34 +14,68 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Fetch Data
+      - name: Fetch and Process
         run: |
-          node <<EOF
-          const fs = require('fs');
+          python3 <<EOF
+          import urllib.request
+          import gzip
+          import xml.etree.ElementTree as ET
+          import json
+          from datetime import datetime
 
-          async function grab() {
-            // Using AllOrigins as a bypass for the Cloudflare block
-            const target = "https://www.tvtv.ca/api/grid?lineupId=CAN-0004264-X";
-            const url = "https://api.allorigins.win/get?url=" + encodeURIComponent(target);
-            
-            try {
-              const res = await fetch(url);
-              const wrapper = await res.json();
-              const channels = JSON.parse(wrapper.contents);
-              
-              if (!Array.isArray(channels)) throw new Error("Invalid format");
-
-              const now = new Date().toLocaleString("en-CA", {timeZone: "America/Montreal", hour12: false});
-              const output = { lastUpdated: now, channels: channels };
-              
-              fs.writeFileSync('tele.json', JSON.stringify(output, null, 2));
-              console.log("Success: Data saved.");
-            } catch (e) {
-              console.error("Fetch failed: ", e.message);
-              process.exit(1);
-            }
+          # Community-maintained reliable source
+          URL = "https://epgshare01.online/epgshare01/epg_ripper_CA1.xml.gz"
+          
+          # The exact IDs used in this specific EPG source
+          FAVS = {
+              "Radio-Canada.ca": "CBFT (SRC)",
+              "TeleQuebec.ca": "CIVM (TQ)",
+              "TVA.ca": "CFTM (TVA)",
+              "Noovo.ca": "CFJP (Noovo)",
+              "CBC.ca": "CBMT (CBC)",
+              "LCN.ca": "LCN",
+              "SeriesPlus.ca": "Séries Plus"
           }
-          grab();
+
+          try:
+              print("Downloading EPG...")
+              req = urllib.request.Request(URL, headers={'User-Agent': 'Mozilla/5.0'})
+              with urllib.request.urlopen(req) as response:
+                  with gzip.open(response, 'rb') as f:
+                      tree = ET.parse(f)
+                      root = tree.getroot()
+
+              output_channels = []
+              now_str = datetime.now().strftime('%Y%m%d')
+
+              for ch_id, clean_name in FAVS.items():
+                  ch_obj = {"listName": clean_name, "callSign": ch_id.split('.')[0], "listings": []}
+                  
+                  # Find programs for this channel
+                  for prog in root.findall(f"programme[@channel='{ch_id}']"):
+                      start = prog.get('start')
+                      # Only take today's/tomorrow's shows to keep file small
+                      if start.startswith(now_str):
+                          time_part = start[8:12] # HHMM
+                          ch_obj["listings"].append({
+                              "title": prog.find('title').text,
+                              "startTime": f"{time_part[:2]}:{time_part[2:]}"
+                          })
+                  
+                  if ch_obj["listings"]:
+                      ch_obj["listings"].sort(key=lambda x: x['startTime'])
+                      output_channels.append(ch_obj)
+
+              with open('tele.json', 'w', encoding='utf-8') as f:
+                  json.dump({
+                      "lastUpdated": datetime.now().strftime('%Y-%m-%d %H:%M'),
+                      "channels": output_channels
+                  }, f, ensure_ascii=False)
+              print("Success!")
+
+          except Exception as e:
+              print(f"Error: {e}")
+              exit(1)
           EOF
 
       - name: Commit and Push
@@ -49,4 +83,4 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add tele.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Direct data sync" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Sync via EPGShare" && git push)
