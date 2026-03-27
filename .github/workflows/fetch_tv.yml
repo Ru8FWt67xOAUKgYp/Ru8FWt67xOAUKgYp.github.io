@@ -16,15 +16,9 @@ jobs:
         run: |
           node <<EOF
           const fs = require('fs');
-          const FAVS = [
-            {id: "CBFT.ca", name: "Radio-Canada"},
-            {id: "CIVM.ca", name: "Télé-Québec"},
-            {id: "CFTM.ca", name: "TVA"},
-            {id: "CFJP.ca", name: "Noovo"},
-            {id: "CBMT.ca", name: "CBC MTL"},
-            {id: "LCN.ca", name: "LCN"},
-            {id: "SERIESPLUS.ca", name: "Séries Plus"}
-          ];
+          
+          // These are the "Keywords" we are looking for in the XML
+          const KEYWORDS = ["Radio-Canada", "Télé-Québec", "TVA", "Noovo", "CBC", "LCN", "Séries Plus"];
 
           async function start() {
             try {
@@ -32,51 +26,52 @@ jobs:
               const res = await fetch("https://iptv-org.github.io/epg/guides/ca/tvtv.ca.epg.xml");
               const xml = await res.text();
               
-              const channels = [];
-              
-              FAVS.forEach(fav => {
-                const listings = [];
-                // Split the XML into chunks for this specific channel
-                const chunks = xml.split(\`channel="\${fav.id}"\`);
-                
-                // Skip the first chunk (it's headers), look at the rest
-                for (let i = 1; i < chunks.length; i++) {
-                  const chunk = chunks[i];
-                  if (!chunk.includes('<title')) continue;
+              const channelsMap = {};
 
-                  // Extract Start Time (Format: start="20260327013000")
-                  const timeMatch = chunk.match(/start="(\\d{8})(\\d{4})/);
-                  // Extract Title
-                  const titleMatch = chunk.match(/<title[^>]*>([^<]+)<\\/title>/);
-
-                  if (timeMatch && titleMatch) {
-                    const time = timeMatch[2]; // HHMM
-                    listings.push({
-                      startTime: \`\${time.substring(0,2)}:\${time.substring(2,4)}\`,
-                      title: titleMatch[1].replace(/&/g, '&'),
-                      raw: timeMatch[1] // For sorting
-                    });
-                  }
+              // 1. First, find ALL channel definitions to get their IDs
+              const channelRegex = /<channel id="([^"]+)">\\s*<display-name[^>]*>([^<]+)<\\/display-name>/g;
+              let chMatch;
+              while ((chMatch = channelRegex.exec(xml)) !== null) {
+                const id = chMatch[1];
+                const name = chMatch[2];
+                if (KEYWORDS.some(k => name.includes(k))) {
+                  channelsMap[id] = { name: name, listings: [] };
                 }
+              }
 
-                if (listings.length > 0) {
-                  // Sort by date/time and filter for upcoming shows
-                  listings.sort((a, b) => a.raw.localeCompare(b.raw));
-                  channels.push({
-                    name: fav.name,
-                    id: fav.id,
-                    listings: listings.slice(0, 12)
+              const foundIds = Object.keys(channelsMap);
+              console.log("Found IDs:", foundIds);
+
+              // 2. Scan the file for programmes belonging to these IDs
+              const progRegex = /<programme start="(\\d{8})(\\d{4})[^"]+" channel="([^"]+)">\\s*<title[^>]*>([^<]+)<\\/title>/g;
+              let pMatch;
+              while ((pMatch = progRegex.exec(xml)) !== null) {
+                const channelId = pMatch[3];
+                if (channelsMap[channelId]) {
+                  const time = pMatch[2];
+                  channelsMap[channelId].listings.push({
+                    startTime: \`\${time.substring(0,2)}:\${time.substring(2,4)}\`,
+                    title: pMatch[4].replace(/&/g, '&'),
+                    raw: pMatch[1] + pMatch[2]
                   });
                 }
-              });
+              }
+
+              // 3. Clean up and format
+              const finalChannels = Object.values(channelsMap)
+                .filter(c => c.listings.length > 0)
+                .map(c => {
+                  c.listings.sort((a, b) => a.raw.localeCompare(b.raw));
+                  return { name: c.name, listings: c.listings.slice(0, 10) };
+                });
 
               const output = {
                 lastUpdated: new Date().toLocaleString("fr-CA", {timeZone: "America/Montreal"}),
-                channels: channels
+                channels: finalChannels
               };
 
               fs.writeFileSync('tele.json', JSON.stringify(output, null, 2));
-              console.log(\`Success: Parsed \${channels.length} channels.\`);
+              console.log(\`Final count: \${finalChannels.length} channels.\`);
             } catch (e) {
               console.error(e);
               process.exit(1);
@@ -89,5 +84,5 @@ jobs:
           git config --global user.name "bot"
           git config --global user.email "bot"
           git add tele.json
-          git commit -m "Fix parsing logic" || exit 0
+          git commit -m "Dynamic keyword sync" || exit 0
           git push
