@@ -2,40 +2,38 @@ name: Update Gas Prices
 
 on:
   schedule:
-    # Runs every 4 hours (UTC)
-    - cron: '0 */4 * * *'
-  workflow_dispatch:
-    # Adds a manual "Run workflow" button in the GitHub Actions tab
+    # Runs every 6 hours (00:00, 06:00, 12:00, 18:00 UTC)
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # Allows you to run it manually from the "Actions" tab
+
+permissions:
+  contents: write # CRITICAL: Allows the bot to save the JSON file back to your repo
 
 jobs:
-  build:
+  fetch-and-deploy:
     runs-on: ubuntu-latest
-    
-    # Permissions needed to commit the JSON file back to the repo
-    permissions:
-      contents: write
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: '3.11'
 
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests
+          pip install curl_cffi requests
 
-      - name: Run Update Script
+      - name: Run Gas Scraper
         run: python update_gas.py
 
       - name: Commit and Push Changes
         run: |
-          git config --global user.name "GasBot"
-          git config --global user.email "actions@github.com"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add gas_prices.json
-          # Only commit if there are actually changes to the prices
-          git diff-index --quiet HEAD || (git commit -m "Update gas prices for H3W 1X4" && git push)
+          # Only commit if the file actually changed to avoid empty "error" commits
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update gas prices: $(date)" && git push)
