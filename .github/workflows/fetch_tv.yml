@@ -1,4 +1,4 @@
-name: Update TV MTL
+name: Update TV MTL (Ultimate)
 
 on:
   schedule:
@@ -17,74 +17,89 @@ jobs:
           node <<EOF
           const fs = require('fs');
           
-          // Using the "all-in-one" Canada source which is less likely to 404
-          const EPG_URL = "https://iptv-org.github.io/epg/guides/ca/canada.xml";
+          // Triple fallback strategy
+          const SOURCES = [
+            "https://raw.githubusercontent.com/iptv-org/epg/master/guides/ca/tvtv.ca.epg.xml",
+            "https://iptv-org.github.io/epg/guides/ca/canada.xml",
+            "https://raw.githubusercontent.com/acidzebra/epg-config/master/guides/canada.xml"
+          ];
 
           async function start() {
-            try {
-              console.log("Fetching: " + EPG_URL);
-              const res = await fetch(EPG_URL);
-              
-              if (!res.ok) {
-                // Emergency Fallback to the epgshare mirror if the main one is down
-                console.log("Primary failed, trying epgshare...");
-                const fallback = await fetch("https://raw.githubusercontent.com/acidzebra/epg-config/master/guides/canada.xml");
-                if (!fallback.ok) throw new Error("All EPG sources are 404.");
-                var xml = await fallback.text();
-              } else {
-                var xml = await res.text();
-              }
-
-              const targets = [
-                {reg: /Radio-Canada/i, name: "Radio-Canada"},
-                {reg: /Tele-Quebec/i, name: "Télé-Québec"},
-                {reg: /TVA/i, name: "TVA"},
-                {reg: /Noovo/i, name: "Noovo"},
-                {reg: /CBC/i, name: "CBC MTL"},
-                {reg: /LCN/i, name: "LCN"},
-                {reg: /Series/i, name: "Séries Plus"}
-              ];
-
-              const channelsMap = {};
-              const chMatch = xml.matchAll(/<channel id="([^"]+)">\s*<display-name[^>]*>([^<]+)<\/display-name>/gi);
-              for (const m of chMatch) {
-                const id = m[1];
-                const displayName = m[2];
-                const match = targets.find(t => t.reg.test(displayName) || t.reg.test(id));
-                if (match) {
-                  channelsMap[id] = { name: match.name, listings: [] };
+            let xml = "";
+            for (const url of SOURCES) {
+              try {
+                console.log("Checking: " + url);
+                const res = await fetch(url);
+                if (res.ok) {
+                  xml = await res.text();
+                  if (xml.length > 5000) {
+                    console.log("Success! Data found at " + url);
+                    break;
+                  }
                 }
-              }
+              } catch (e) { console.log("Failed source."); }
+            }
 
-              const progMatch = xml.matchAll(/<programme start="(\d{8})(\d{4})[^"]+" channel="([^"]+)">\s*<title[^>]*>([^<]+)<\/title>/gi);
-              for (const pm of progMatch) {
-                const chId = pm[3];
-                if (channelsMap[chId]) {
-                  channelsMap[chId].listings.push({
-                    startTime: pm[2].substring(0,2) + ":" + pm[2].substring(2,4),
-                    title: pm[4].replace(/&/g, '&'),
-                    sort: pm[1] + pm[2]
-                  });
-                }
-              }
-
-              const final = Object.values(channelsMap)
-                .filter(c => c.listings.length > 0)
-                .map(c => {
-                  c.listings.sort((a,b) => a.sort.localeCompare(b.sort));
-                  return { name: c.name, listings: c.listings.slice(0, 10) };
-                });
-
-              fs.writeFileSync('tele.json', JSON.stringify({
-                lastUpdated: new Date().toLocaleString("fr-CA", {timeZone: "America/Montreal"}),
-                channels: final
-              }, null, 2));
-              
-              console.log("Success! Found " + final.length + " channels.");
-            } catch (e) {
-              console.error(e.message);
+            if (!xml) {
+              console.error("All sources returned 404 or empty data.");
               process.exit(1);
             }
+
+            // Keyword mapping for Montreal favorites
+            const FAVS = [
+              {reg: /Radio-Canada/i, name: "Radio-Canada"},
+              {reg: /Tele-Quebec/i, name: "Télé-Québec"},
+              {reg: /TVA/i, name: "TVA"},
+              {reg: /Noovo/i, name: "Noovo"},
+              {reg: /CBC/i, name: "CBC MTL"},
+              {reg: /LCN/i, name: "LCN"},
+              {reg: /Series/i, name: "Séries Plus"}
+            ];
+
+            const channelsMap = {};
+            // Step 1: Map Channel IDs to our clean names
+            const chMatch = xml.matchAll(/<channel id="([^"]+)">\s*<display-name[^>]*>([^<]+)<\/display-name>/gi);
+            for (const m of chMatch) {
+              const id = m[1];
+              const displayName = m[2];
+              const match = FAVS.find(f => f.reg.test(displayName) || f.reg.test(id));
+              if (match) {
+                channelsMap[id] = { name: match.name, listings: [] };
+              }
+            }
+
+            console.log("Matched IDs:", Object.keys(channelsMap));
+
+            // Step 2: Extract Program Listings
+            const progMatch = xml.matchAll(/<programme start="(\d{8})(\d{4})[^"]+" channel="([^"]+)">\s*<title[^>]*>([^<]+)<\/title>/gi);
+            for (const pm of progMatch) {
+              const chId = pm[3];
+              if (channelsMap[chId]) {
+                const day = pm[1];
+                const time = pm[2];
+                channelsMap[chId].listings.push({
+                  startTime: time.substring(0,2) + ":" + time.substring(2,4),
+                  title: pm[4].replace(/&/g, '&'),
+                  sort: day + time
+                });
+              }
+            }
+
+            // Step 3: Final Format & Sort
+            const final = Object.values(channelsMap)
+              .filter(c => c.listings.length > 0)
+              .map(c => {
+                c.listings.sort((a,b) => a.sort.localeCompare(b.sort));
+                return { name: c.name, listings: c.listings.slice(0, 10) };
+              });
+
+            const output = {
+              lastUpdated: new Date().toLocaleString("fr-CA", {timeZone: "America/Montreal"}),
+              channels: final
+            };
+
+            fs.writeFileSync('tele.json', JSON.stringify(output, null, 2));
+            console.log("Done! Found " + final.length + " active channels.");
           }
           start();
           EOF
@@ -93,5 +108,5 @@ jobs:
           git config --global user.name "bot"
           git config --global user.email "bot"
           git add tele.json
-          git commit -m "Fix 404 source" || exit 0
+          git commit -m "Triple-source sync" || exit 0
           git push
