@@ -5,54 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>TV MTL Pro</title>
     <style>
-        :root { 
-            --accent: #007aff; --live: #ff3b30; --bg: #ffffff; 
-            --card: #f2f2f7; --text: #1c1c1e; --border: #d1d1d6; 
-        }
-        @media (prefers-color-scheme: dark) {
-            :root { --bg: #000000; --card: #1c1c1e; --text: #f2f2f7; --border: #38383a; }
-        }
-        body { 
-            font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); 
-            margin: 0; padding: 10px; -webkit-tap-highlight-color: transparent;
-        }
+        :root { --accent: #007aff; --live: #ff3b30; --bg: #000; --card: #1c1c1e; --text: #f2f2f7; --border: #38383a; }
+        body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 10px; }
         .container { max-width: 500px; margin: auto; }
-        .header { 
-            position: sticky; top: 0; background: var(--bg); z-index: 100; 
-            padding: 10px 0; border-bottom: 1px solid var(--border); margin-bottom: 15px;
-        }
-        .search { 
-            width: 100%; padding: 12px; border-radius: 12px; border: none; 
-            background: var(--card); color: var(--text); font-size: 16px; outline: none;
-        }
-        .card { 
-            background: var(--card); border-radius: 14px; padding: 15px; 
-            margin-bottom: 12px; border: 1px solid var(--border);
-        }
+        .header { position: sticky; top: 0; background: var(--bg); z-index: 100; padding: 10px 0; border-bottom: 1px solid var(--border); margin-bottom: 15px; }
+        .search { width: 100%; padding: 12px; border-radius: 12px; border: none; background: var(--card); color: var(--text); font-size: 16px; outline: none; }
+        .card { background: var(--card); border-radius: 14px; padding: 15px; margin-bottom: 12px; border: 1px solid var(--border); }
         .ch-row { display: flex; justify-content: space-between; font-size: 11px; font-weight: 800; color: #8e8e93; text-transform: uppercase; }
         .prog-title { font-size: 1.2rem; font-weight: 700; margin: 6px 0; color: var(--accent); cursor: pointer; display: flex; align-items: center; gap: 8px; }
         .live-dot { width: 8px; height: 8px; background: var(--live); border-radius: 50%; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
         .next-list { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; display: none; }
         .visible { display: block; }
-        .next-item { display: flex; gap: 12px; font-size: 0.9rem; padding: 8px 0; border-bottom: 1px solid rgba(142,142,147,0.1); }
+        .next-item { display: flex; gap: 12px; font-size: 0.9rem; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
         .next-time { color: var(--accent); font-weight: 700; min-width: 50px; }
         footer { text-align: center; font-size: 11px; color: #8e8e93; padding: 20px 0; }
-        .refresh-btn { cursor: pointer; text-decoration: underline; margin-left: 5px; }
     </style>
 </head>
 <body>
 <div class="container">
     <div class="header">
-        <input type="text" id="searchInput" class="search" placeholder="Rechercher..." onkeyup="handleSearch()">
+        <input type="text" id="searchInput" class="search" placeholder="Chercher émission ou poste..." onkeyup="handleSearch()">
     </div>
     <div id="guide">Chargement...</div>
-    <footer>
-        Dernière mise à jour : <span id="sync-time">...</span>
-        <span class="refresh-btn" onclick="init()">↻ Actualiser</span>
-    </footer>
+    <footer>Mise à jour : <span id="sync-time">...</span></footer>
 </div>
-
 <script>
     let fullData = [];
     async function init() {
@@ -62,15 +39,13 @@
             document.getElementById('sync-time').innerText = data.lastUpdated;
             fullData = data.channels;
             render(fullData);
-        } catch (e) {
-            document.getElementById('guide').innerText = "Erreur : " + e.message;
-        }
+        } catch (e) { document.getElementById('guide').innerText = "Vérifiez l'Action GitHub..."; }
     }
     function render(list) {
         const container = document.getElementById('guide');
         container.innerHTML = list.length ? "" : "Aucun résultat";
         list.forEach((ch, i) => {
-            const now = ch.listings[0] || {title: "Aucune info", startTime: "--:--"};
+            const now = ch.listings[0] || {title: "N/A", startTime: "--:--"};
             const future = ch.listings.slice(1, 10);
             const div = document.createElement('div');
             div.className = 'card';
@@ -82,17 +57,13 @@
                 <div style="font-size:0.9rem">${now.startTime}</div>
                 <div id="nx-${i}" class="next-list">
                     ${future.map(f => `<div class="next-item"><span class="next-time">${f.startTime}</span><span>${f.title}</span></div>`).join('')}
-                </div>
-            `;
+                </div>`;
             container.appendChild(div);
         });
     }
     function handleSearch() {
         const q = document.getElementById('searchInput').value.toLowerCase();
-        const filtered = fullData.filter(c => 
-            c.listName.toLowerCase().includes(q) || c.listings.some(l => l.title.toLowerCase().includes(q))
-        );
-        render(filtered);
+        render(fullData.filter(c => c.listName.toLowerCase().includes(q) || c.listings.some(l => l.title.toLowerCase().includes(q))));
     }
     init();
 </script>
