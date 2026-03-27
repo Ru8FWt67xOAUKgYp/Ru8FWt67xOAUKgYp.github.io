@@ -1,31 +1,65 @@
- 
+import requests
 import json
-from py_gasbuddy import GasBuddy
 
-def update_gas_data():
-    gb = GasBuddy()
-    # H3W 1X4 is in Montreal. 
-    # Zip code search works for Canadian postal codes.
-    stations = gb.get_stations(zip_code="H3W 1X4")
+def fetch_gas_prices():
+    url = "https://www.gasbuddy.com/graphql"
     
-    # Extract name, price, and address for regular gas (Fuel Type 1)
-    results = []
-    for s in stations:
-        # Check if regular gas price exists
-        reg_price = s.get('fuel_types', {}).get('1', {}).get('price')
-        if reg_price:
-            results.append({
-                "name": s.get('name'),
-                "address": s.get('address'),
-                "price": float(reg_price),
-                "updated": s.get('fuel_types', {}).get('1', {}).get('posted_time')
-            })
+    # This query mimics what the GasBuddy website does to find local stations
+    query = """
+    query LocationBySearchTerm($search: String, $fuel: Int) {
+      locationBySearchTerm(search: $search) {
+        stations(fuel: $fuel) {
+          results {
+            name
+            address {
+              line1
+            }
+            prices {
+              fuelProduct
+              credit {
+                price
+                postedTime
+              }
+            }
+          }
+        }
+      }
+    }
+    """
     
-    # Sort by price (lowest first) and take top 20
-    top_20 = sorted(results, key=lambda x: x['price'])[:20]
-    
-    with open('gas_prices.json', 'w') as f:
-        json.dump(top_20, f, indent=4)
+    variables = {
+        "search": "H3W 1X4",
+        "fuel": 1 # 1 is Regular Gas
+    }
+
+    try:
+        response = requests.post(url, json={'query': query, 'variables': variables}, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        stations = data['data']['locationBySearchTerm']['stations']['results']
+        
+        results = []
+        for s in stations:
+            # Extract the specific price for regular gas
+            reg_prices = [p for p in s['prices'] if p['fuelProduct'] == 'regular']
+            if reg_prices and reg_prices[0]['credit']['price'] > 0:
+                results.append({
+                    "name": s['name'],
+                    "address": s['address']['line1'],
+                    "price": reg_prices[0]['credit']['price'],
+                    "updated": reg_prices[0]['credit']['postedTime']
+                })
+        
+        # Sort by price and take top 20
+        top_20 = sorted(results, key=lambda x: x['price'])[:20]
+        
+        with open('gas_prices.json', 'w') as f:
+            json.dump(top_20, f, indent=4)
+        print(f"Successfully updated {len(top_20)} stations.")
+
+    except Exception as e:
+        print(f"Error fetching data: {e}")
 
 if __name__ == "__main__":
-    update_gas_data()
+    fetch_gas_prices()
