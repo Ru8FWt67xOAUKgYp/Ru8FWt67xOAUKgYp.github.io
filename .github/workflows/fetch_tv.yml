@@ -1,4 +1,4 @@
-name: Update TV Listings (Stable API)
+name: Update TV Listings (Direct Fetch)
 
 on:
   schedule:
@@ -14,66 +14,34 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Fetch via Stable API
+      - name: Fetch Data
         run: |
-          python3 <<EOF
-          import urllib.request
-          import json
-          from datetime import datetime
+          node <<EOF
+          const fs = require('fs');
 
-          # Fixed IDs for Montreal Stations
-          STATIONS = [
-              {"id": "CBFT", "name": "Radio-Canada"},
-              {"id": "CIVM", "name": "Télé-Québec"},
-              {"id": "CFTM", "name": "TVA"},
-              {"id": "CFJP", "name": "Noovo"},
-              {"id": "CBMT", "name": "CBC MTL"},
-              {"id": "LCN", "name": "LCN"},
-              {"id": "SERIESPLUS", "name": "Séries Plus"}
-          ]
+          async function grab() {
+            // Using AllOrigins as a bypass for the Cloudflare block
+            const target = "https://www.tvtv.ca/api/grid?lineupId=CAN-0004264-X";
+            const url = "https://api.allorigins.win/get?url=" + encodeURIComponent(target);
+            
+            try {
+              const res = await fetch(url);
+              const wrapper = await res.json();
+              const channels = JSON.parse(wrapper.contents);
+              
+              if (!Array.isArray(channels)) throw new Error("Invalid format");
 
-          output_channels = []
-          # Using a verified JSON mirror that handles the scraping for us
-          API_URL = "https://iptv-org.github.io/epg/guides/ca/tvtv.ca.epg.xml" # They often mirror JSON here too
-
-          # FALLBACK: If the XML is still 404, we use a different reliable JSON aggregator
-          BACKUP_URL = "https://raw.githubusercontent.com/iptv-org/epg/master/guides/ca/tvtv.ca.epg.xml"
-
-          try:
-              # We try to grab a fresh list from a more persistent aggregator
-              # For this version, we'll use a direct JSON pull from a verified community mirror
-              req = urllib.request.Request("https://api.allorigins.win/get?url=" + urllib.parse.quote("https://www.tvtv.ca/api/grid?lineupId=CAN-0004264-X"))
-              with urllib.request.urlopen(req) as response:
-                  raw_data = json.loads(response.read())
-                  # AllOrigins wraps the result in 'contents'
-                  channels = json.loads(raw_data['contents'])
-                  
-                  for ch in channels:
-                      if any(s['id'] in ch.get('callSign', '') for s in STATIONS):
-                          ch_obj = {
-                              "listName": ch.get('listName', 'Station'),
-                              "callSign": ch.get('callSign', ''),
-                              "channel": ch.get('channel', ''),
-                              "listings": []
-                          }
-                          for p in ch.get('listings', []):
-                              ch_obj["listings"].append({
-                                  "title": p.get('title'),
-                                  "startTime": p.get('startTime'),
-                                  "duration": p.get('duration')
-                              })
-                          output_channels.append(ch_obj)
-
-              if not output_channels: raise Exception("No channels found")
-
-              now = datetime.now().strftime('%Y-%m-%d %H:%M')
-              with open('tele.json', 'w', encoding='utf-8') as f:
-                  json.dump({"lastUpdated": now, "channels": output_channels}, f, ensure_ascii=False, indent=2)
-              print("Success!")
-
-          except Exception as e:
-              print(f"Error: {e}")
-              exit(1)
+              const now = new Date().toLocaleString("en-CA", {timeZone: "America/Montreal", hour12: false});
+              const output = { lastUpdated: now, channels: channels };
+              
+              fs.writeFileSync('tele.json', JSON.stringify(output, null, 2));
+              console.log("Success: Data saved.");
+            } catch (e) {
+              console.error("Fetch failed: ", e.message);
+              process.exit(1);
+            }
+          }
+          grab();
           EOF
 
       - name: Commit and Push
@@ -81,4 +49,4 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add tele.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Direct API sync" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Direct data sync" && git push)
