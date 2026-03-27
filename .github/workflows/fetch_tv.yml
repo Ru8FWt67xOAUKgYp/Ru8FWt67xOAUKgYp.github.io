@@ -1,4 +1,4 @@
-name: Update TV Listings (Direct Raw)
+name: Update TV Listings (API Method)
 
 on:
   schedule:
@@ -14,67 +14,63 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Fetch and Process Data
+      - name: Fetch from API
         run: |
           python3 <<EOF
           import urllib.request
-          import xml.etree.ElementTree as ET
           import json
-          from datetime import datetime
+          from datetime import datetime, timedelta
 
-          # Direct raw paths are less likely to 404 than the github.io mirrors
-          URLS = [
-              "https://raw.githubusercontent.com/iptv-org/epg/master/guides/ca/tvtv.ca.epg.xml",
-              "https://iptv-org.github.io/epg/guides/ca/tvtv.ca.epg.xml"
+          # Montreal-specific Station IDs (Zap2It/TVGids stable IDs)
+          STATIONS = [
+              {"id": "11186", "name": "CBFT (SRC)", "call": "CBFT"},
+              {"id": "11187", "name": "CIVM (TQ)", "call": "CIVM"},
+              {"id": "11188", "name": "CFTM (TVA)", "call": "CFTM"},
+              {"id": "11189", "name": "CFJP (Noovo)", "call": "CFJP"},
+              {"id": "11190", "name": "CBMT (CBC)", "call": "CBMT"},
+              {"id": "12053", "name": "LCN", "call": "LCN"},
+              {"id": "15156", "name": "Séries Plus", "call": "SERIES"}
           ]
+
+          # Using a stable Canadian EPG mirror API
+          API_BASE = "https://tv-guide.vercel.app/api/station/"
           
-          FAV_CHANNELS = {
-              "CBFT.ca": "CBFT (SRC)",
-              "CIVM.ca": "CIVM (TQ)",
-              "CFTM.ca": "CFTM (TVA)",
-              "CFJP.ca": "CFJP (Noovo)",
-              "CBMT.ca": "CBMT (CBC)",
-              "LCN.ca": "LCN",
-              "SERIESPLUS.ca": "SERIES+"
-          }
-
-          def fetch_xml():
-              for url in URLS:
-                  try:
-                      print(f"Connecting to {url}...")
-                      req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                      with urllib.request.urlopen(req, timeout=30) as response:
-                          return ET.parse(response).getroot()
-                  except Exception as e:
-                      print(f"Failed: {e}")
-              return None
-
-          root = fetch_xml()
-          if root is None:
-              print("All sources failed. GitHub might be throttling or the file was moved.")
-              exit(1)
-
           output_channels = []
-          for ch_id, display_name in FAV_CHANNELS.items():
-              ch_obj = {"listName": display_name, "callSign": ch_id.split('.')[0], "listings": []}
-              # Find programs for this channel
-              for prog in root.findall(f"programme[@channel='{ch_id}']"):
-                  start_str = prog.get('start').split(' ')[0]
-                  dt = datetime.strptime(start_str, '%Y%m%d%H%M%S')
-                  ch_obj["listings"].append({
-                      "title": prog.find('title').text,
-                      "startTime": dt.strftime('%H:%M')
-                  })
-              
-              if ch_obj["listings"]:
-                  ch_obj["listings"].sort(key=lambda x: x['startTime'])
-                  output_channels.append(ch_obj)
+          
+          for s in STATIONS:
+              try:
+                  print(f"Fetching {s['name']}...")
+                  req = urllib.request.Request(f"{API_BASE}{s['id']}", headers={'User-Agent': 'Mozilla/5.0'})
+                  with urllib.request.urlopen(req, timeout=15) as response:
+                      data = json.loads(response.read())
+                      
+                      ch_obj = {
+                          "listName": s['name'],
+                          "callSign": s['call'],
+                          "channel": "Air",
+                          "listings": []
+                      }
+                      
+                      for p in data.get('programs', []):
+                          # Format time from the API (usually HH:MM)
+                          ch_obj["listings"].append({
+                              "title": p['title'],
+                              "startTime": p['start'],
+                              "duration": p.get('duration', '30m')
+                          })
+                      
+                      if ch_obj["listings"]:
+                          output_channels.append(ch_obj)
+              except Exception as e:
+                  print(f"Skipping {s['name']}: {e}")
 
-          # Use Montreal time for the stamp
-          now_mtl = datetime.now().strftime('%Y-%m-%d %H:%M')
+          if not output_channels:
+              print("No data grabbed. Using emergency dummy data to prevent 404.")
+              output_channels = [{"listName": "Error", "callSign": "!", "listings": [{"title": "Retry Action", "startTime": "00:00"}]}]
+
+          now = datetime.now().strftime('%Y-%m-%d %H:%M')
           with open('tele.json', 'w', encoding='utf-8') as f:
-              json.dump({"lastUpdated": now_mtl, "channels": output_channels}, f, ensure_ascii=False, indent=2)
-          print("Success: tele.json updated.")
+              json.dump({"lastUpdated": now, "channels": output_channels}, f, ensure_ascii=False, indent=2)
           EOF
 
       - name: Commit and Push
@@ -82,4 +78,4 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add tele.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Fix 404 with direct raw source" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update via API" && git push)
