@@ -16,29 +16,47 @@ jobs:
         run: |
           node <<EOF
           const fs = require('fs');
-
-          // The exact IDs used by the global IPTV-org database for Montreal
           const FAVS = ["CBFT.ca", "CIVM.ca", "CFTM.ca", "CFJP.ca", "CBMT.ca", "LCN.ca", "SERIESPLUS.ca"];
 
           async function start() {
             try {
-              // Fetching from the official JS-ready mirror (no 404s here)
-              const res = await fetch("https://iptv-org.github.io/api/guides.json");
-              const allGuides = await res.json();
+              // Fetching a stable XML guide directly
+              const res = await fetch("https://iptv-org.github.io/epg/guides/ca/tvtv.ca.epg.xml");
+              const xmlText = await res.text();
               
-              const myGuides = allGuides.filter(g => FAVS.includes(g.channel));
+              const channels = [];
               
+              // Simple regex parsing to stay lightweight and avoid extra dependencies
+              FAVS.forEach(id => {
+                const callSign = id.split('.')[0];
+                const listings = [];
+                
+                // Find programs for this channel
+                const progRegex = new RegExp('<programme start="(\\\\d{12})[^"]+" channel="' + id + '">\\\\s*<title[^>]*>([^<]+)</title>', 'g');
+                let match;
+                while ((match = progRegex.exec(xmlText)) !== null) {
+                    const rawTime = match[1]; // YYYYMMDDHHMM
+                    listings.push({
+                        title: match[2],
+                        startTime: \`\${rawTime.substring(8,10)}:\${rawTime.substring(10,12)}\`
+                    });
+                }
+
+                if (listings.length > 0) {
+                    channels.push({
+                        name: callSign,
+                        listings: listings.slice(0, 15) // Keep next 15 shows
+                    });
+                }
+              });
+
               const output = {
                 lastUpdated: new Date().toLocaleString("fr-CA", {timeZone: "America/Montreal"}),
-                channels: myGuides.map(g => ({
-                  name: g.channel.split('.')[0],
-                  url: g.url, // Link to the raw EPG if you ever need it
-                  site: g.site
-                }))
+                channels: channels
               };
 
               fs.writeFileSync('tele.json', JSON.stringify(output, null, 2));
-              console.log("Success!");
+              console.log("Success: Data parsed.");
             } catch (e) {
               console.error(e);
               process.exit(1);
@@ -51,5 +69,5 @@ jobs:
           git config --global user.name "bot"
           git config --global user.email "bot"
           git add tele.json
-          git commit -m "Update" || exit 0
+          git commit -m "Update Guide Data" || exit 0
           git push
