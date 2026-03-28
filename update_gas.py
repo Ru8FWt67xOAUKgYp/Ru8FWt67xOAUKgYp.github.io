@@ -1,68 +1,74 @@
-import os
 import requests
 import json
 import sys
+import os
 from datetime import datetime
 
-def fetch_zyla_gas():
-    api_key = os.getenv("ZYLA_API_KEY")
-    if not api_key:
-        print("Error: ZYLA_API_KEY secret is missing.")
-        sys.exit(1)
-
-    # Zyla Real-Time Canadian Fuel Prices API
-    url = "https://zylalabs.com/api/6855/real-time+canadian+fuel+prices+api/11000/get+prices"
-    headers = {'Authorization': f'Bearer {api_key}'}
-    params = {'postal_code': 'H3W 1X4'}
+def fetch_free_gas():
+    # Montreal H3W 1X4 Search
+    # This endpoint is generally more open than their GraphQL one
+    url = "https://www.gasbuddy.com/assets-v2/api/stations"
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1",
+        "Accept": "application/json"
+    }
+    
+    params = {
+        "search": "H3W 1X4",
+        "fuel": 1 # 1 = Regular
+    }
 
     try:
-        # 1. Load existing data to get the previous minimum price
-        try:
+        # Load history for the Price Drop badge
+        prev_min = 0
+        if os.path.exists('gas_prices.json'):
             with open('gas_prices.json', 'r') as f:
-                old_data = json.load(f)
-                prev_min = old_data.get("current_min", 0)
-        except:
-            prev_min = 0
+                history = json.load(f)
+                prev_min = history.get("current_min", 0)
 
-        # 2. Fetch new data
-        response = requests.get(url, headers=headers, params=params, timeout=20)
+        response = requests.get(url, headers=headers, params=params, timeout=15)
         response.raise_for_status()
         data = response.json()
         
-        raw_stations = data.get('result', [])
-        if not raw_stations:
-            print("No data in API response.")
-            sys.exit(1)
-
-        # 3. Process and Sort
+        stations = data.get('stations', [])
         processed = []
-        for s in raw_stations:
-            price = float(s.get('fuel_price', 0))
+        
+        for s in stations:
+            # Extract price - GasBuddy often nests this in 'prices'
+            price_entry = next((p for p in s.get('prices', []) if p.get('fuel_type') == 'regular'), None)
+            price = float(price_entry.get('price')) if price_entry else 0
+            
             if price > 0:
                 processed.append({
-                    "name": s.get('service_station', 'Gas Station'),
+                    "name": s.get('name', 'Station'),
+                    "address": s.get('address', 'Montreal'),
                     "price": price
                 })
-        
+
+        # Sort by cheapest
         sorted_list = sorted(processed, key=lambda x: x['price'])
         current_min = sorted_list[0]['price'] if sorted_list else 0
 
-        # 4. Save with metadata for the HTML
-        final_output = {
-            "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        output = {
+            "last_updated": datetime.now().strftime("%b %d, %H:%M"),
             "prev_min": prev_min,
             "current_min": current_min,
-            "stations": sorted_list[:15] # Keep top 15 for mobile speed
+            "stations": sorted_list[:12]
         }
 
         with open('gas_prices.json', 'w') as f:
-            json.dump(final_output, f, indent=4)
-            
-        print(f"Sync complete. Low: {current_min}¢ (Prev: {prev_min}¢)")
+            json.dump(output, f, indent=4)
+        
+        print(f"Updated: {len(processed)} stations found. Low: {current_min}¢")
 
     except Exception as e:
-        print(f"Failed to update: {e}")
+        print(f"Fetch failed: {e}")
+        # Create a dummy file so the HTML doesn't crash if it's the first run
+        if not os.path.exists('gas_prices.json'):
+            with open('gas_prices.json', 'w') as f:
+                json.dump({"stations": [], "last_updated": "Error", "current_min": 0, "prev_min": 0}, f)
         sys.exit(1)
 
 if __name__ == "__main__":
-    fetch_zyla_gas()
+    fetch_free_gas()
