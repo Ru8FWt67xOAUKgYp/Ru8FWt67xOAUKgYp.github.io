@@ -1,38 +1,25 @@
 name: Update Gas Prices
-
 on:
   schedule:
     - cron: '0 */12 * * *'
   workflow_dispatch:
-
 permissions:
   contents: write
-
 jobs:
-  run-sync:
+  update:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Needed to see previous file versions if needed
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - name: Install Requests
         run: pip install requests
-
-      - name: Fetch and Process
-        env:
-          ZYLA_API_KEY: ${{ secrets.ZYLA_API_KEY }}
+      - name: Fetch Data
         run: python update_gas.py
-
-      - name: Commit Changes
+      - name: Push to Repo
         run: |
           git config --global user.name "GasBot"
           git config --global user.email "actions@github.com"
           git add gas_prices.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Gas Price Update" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Sync prices" && git push)
