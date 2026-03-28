@@ -2,71 +2,43 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-    <title>Montreal Gas Tracker</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MTL Gas</title>
     <style>
-        :root { --bg: #0f0f0f; --card: #1c1c1e; --text: #ffffff; --red: #ff453a; --green: #32d74b; }
-        body { background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; margin: 0; padding: 15px; }
+        :root { --bg: #000; --card: #1c1c1e; --text: #fff; --red: #ff453a; --green: #32d74b; }
+        body { background: var(--bg); color: var(--text); font-family: sans-serif; padding: 10px; margin: 0; }
         .wrap { max-width: 400px; margin: auto; }
-        
-        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        h1 { font-size: 1.2rem; margin: 0; }
-        #ts { font-size: 0.75rem; color: #8e8e93; }
-
-        .badge { 
-            display: none; background: var(--green); color: #000; 
-            font-size: 0.8rem; font-weight: bold; padding: 5px 10px; 
-            border-radius: 20px; margin-bottom: 15px; text-align: center;
-        }
-
-        .station-card { 
-            background: var(--card); padding: 16px; border-radius: 12px; 
-            display: flex; justify-content: space-between; align-items: center; 
-            margin-bottom: 10px; border: 1px solid #2c2c2e;
-        }
-        .price { font-size: 1.6rem; font-weight: 800; color: var(--red); }
-        .st-name { font-weight: 600; font-size: 1rem; }
+        header { display: flex; justify-content: space-between; border-bottom: 1px solid #333; padding-bottom: 8px; margin-bottom: 15px; }
+        .badge { display: none; background: var(--green); color: #000; font-weight: bold; padding: 8px; border-radius: 8px; margin-bottom: 10px; text-align: center; font-size: 0.9rem; }
+        .station { background: var(--card); padding: 12px; border-radius: 10px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .p { font-size: 1.5rem; font-weight: bold; color: var(--red); }
+        .sub { font-size: 0.7rem; color: #888; }
     </style>
 </head>
 <body>
 <div class="wrap">
     <header>
-        <h1>Gas H3W 1X4</h1>
-        <span id="ts">Loading...</span>
+        <h1 style="font-size:1rem; margin:0;">H3W 1X4 Gas</h1>
+        <span id="ts" class="sub">Loading...</span>
     </header>
-
-    <div id="drop-badge" class="badge">📉 PRICE DROP DETECTED!</div>
-
-    <div id="list">
-        <div style="text-align:center; padding:50px; color:#444;">Syncing with Zyla...</div>
-    </div>
+    <div id="drop" class="badge">↓ PRICES ARE DOWN!</div>
+    <div id="list"></div>
 </div>
-
 <script>
-    async function updateUI() {
+    async function load() {
         try {
-            const r = await fetch(`gas_prices.json?t=${Date.now()}`);
-            const data = await r.json();
-            
-            // 1. Show badge if price is lower than last check
-            if (data.current_min < data.prev_min && data.prev_min > 0) {
-                document.getElementById('drop-badge').style.display = 'block';
-            }
-
-            // 2. Render stations
-            document.getElementById('list').innerHTML = data.stations.map(s => `
-                <div class="station-card">
-                    <span class="st-name">${s.name}</span>
-                    <span class="price">${s.price}¢</span>
-                </div>
-            `).join('');
-
-            document.getElementById('ts').innerText = data.last_updated;
-        } catch(e) {
-            document.getElementById('list').innerHTML = "<p>Data pending. Trigger GitHub Action manually.</p>";
-        }
+            const r = await fetch(`gas_prices.json?v=${Date.now()}`);
+            const d = await r.json();
+            if (d.current_min < d.prev_min && d.prev_min > 0) document.getElementById('drop').style.display = 'block';
+            document.getElementById('list').innerHTML = d.stations.map(s => `
+                <div class="station">
+                    <div><div style="font-weight:bold">${s.name}</div><div class="sub">${s.address}</div></div>
+                    <div class="p">${s.price}¢</div>
+                </div>`).join('');
+            document.getElementById('ts').innerText = d.last_updated;
+        } catch(e) { document.getElementById('list').innerHTML = "No data found yet."; }
     }
-    updateUI();
+    load();
 </script>
 </body>
 </html>
